@@ -3,6 +3,7 @@ import Foundation
 extension Notification.Name {
     static let codeAtlasOpenSource = Notification.Name("CodeAtlas.OpenSource")
     static let codeAtlasOpenWorkspace = Notification.Name("CodeAtlas.OpenWorkspace")
+    static let codeAtlasNavigateSection = Notification.Name("CodeAtlas.NavigateSection")
 }
 
 enum SourceNavigator {
