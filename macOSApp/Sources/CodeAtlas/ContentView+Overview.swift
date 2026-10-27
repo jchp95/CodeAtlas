@@ -164,7 +164,7 @@ func summaryPage(_ snapshot: ArchitectureSnapshot) -> some View {
             Label(vscodeBridge.isRunning ? "VS Code conectado" : "VS Code desconectado", systemImage: "app.connected.to.app.below.fill")
                 .font(.caption2).foregroundStyle(vscodeBridge.isRunning ? .green : .secondary)
                 .help(vscodeBridge.statusMessage)
-            Text("CodeAtlas · 0.16.0")
+            Text("CodeAtlas · 0.17.0")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
         }

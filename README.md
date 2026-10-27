@@ -1,4 +1,4 @@
-# CodeAtlas + StackPilot — MVP 0.16.0
+# CodeAtlas + StackPilot — MVP 0.17.0
 
 macOS desktop developer control center that combines a block-based architecture map, Git snapshot comparisons, local microservice operations, HTTP endpoint testing, and an optional AI engineering assistant.
 

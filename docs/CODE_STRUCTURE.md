@@ -95,3 +95,9 @@ El analizador de flujos utiliza primero los símbolos de Roslyn. Si una referenc
 - `macOSApp/Sources/CodeAtlas/Infrastructure/VSCodeBridge/VSCodeBridgeService.swift`: protocolo HTTP mínimo autenticado, listener de loopback y despacho de navegación a la UI.
 - `vscode-extension/`: extensión JavaScript sin dependencias externas para navegar desde VS Code a CodeAtlas.
 - `scripts/vscode-extension-test.sh` y `scripts/package-vscode-extension.sh`: validación del manifiesto/contrato y empaquetado VSIX local.
+
+
+## Navegación de relaciones y flujos (0.17.0)
+
+- `Views/Architecture/RelationExplorerView.swift`: filtros de relaciones, evidencia, confianza y enlaces a ubicaciones exactas cuando la fuente se puede resolver sin ambigüedad.
+- `Views/BusinessFlows/Components/FlowPipelineView.swift`: secuencia horizontal accesible a código para los pasos de flujos locales y distribuidos.

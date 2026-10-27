@@ -6,6 +6,7 @@ struct BusinessFlowExplorerView: View {
 
     @State private var searchText = ""
     @State private var selectedRepository = "Todos los repositorios"
+    @State private var selectedFlowKind = "Todos"
 
     private var repositoryOptions: [String] {
         let roots = snapshot.workspaceRoots ?? []
@@ -51,6 +52,14 @@ struct BusinessFlowExplorerView: View {
         }
     }
 
+    private var visibleFlows: [BusinessFlow] {
+        selectedFlowKind == "Distribuidos" ? [] : filteredFlows
+    }
+
+    private var visibleDistributedFlows: [DistributedFlow] {
+        selectedFlowKind == "Internos" ? [] : filteredDistributedFlows
+    }
+
     private var filteredFlows: [BusinessFlow] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
         return allFlows.filter { flow in
@@ -71,6 +80,14 @@ struct BusinessFlowExplorerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
+                Picker("Tipo de recorrido", selection: $selectedFlowKind) {
+                    Text("Todos").tag("Todos")
+                    Text("Dentro del servicio").tag("Internos")
+                    Text("Entre microservicios").tag("Distribuidos")
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 540)
+
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Buscar ruta, handler, contrato o archivo…", text: $searchText)
@@ -95,7 +112,7 @@ struct BusinessFlowExplorerView: View {
                     }
                 }
 
-                if filteredFlows.isEmpty && filteredDistributedFlows.isEmpty {
+                if visibleFlows.isEmpty && visibleDistributedFlows.isEmpty {
                     ContentUnavailableView {
                         Label(allFlows.isEmpty && allDistributedFlows.isEmpty ? "Aún no hay flujos trazables" : "No hay coincidencias", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                     } description: {
@@ -105,26 +122,26 @@ struct BusinessFlowExplorerView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 250)
                 } else {
-                    if !filteredDistributedFlows.isEmpty {
+                    if !visibleDistributedFlows.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("Flujos entre microservicios").font(.title2.bold())
                                 Spacer()
-                                Text("\(filteredDistributedFlows.count) recorrido(s)").font(.caption).foregroundStyle(.secondary)
+                                Text("\(visibleDistributedFlows.count) recorrido(s)").font(.caption).foregroundStyle(.secondary)
                             }
                             Text("Productor → contrato de mensajería → consumidor, con referencias a los archivos fuente.")
                                 .font(.callout).foregroundStyle(.secondary)
-                            ForEach(filteredDistributedFlows) { flow in
+                            ForEach(visibleDistributedFlows) { flow in
                                 DistributedFlowCard(flow: flow, onSelectProject: onSelectProject,
                                                     producerRootPath: sourceRoot(for: flow.producerProjectId),
                                                     consumerRootPath: sourceRoot(for: flow.consumerProjectId))
                             }
                         }
                     }
-                    if !filteredFlows.isEmpty {
+                    if !visibleFlows.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Flujos dentro de cada servicio").font(.title2.bold())
-                            ForEach(filteredFlows) { flow in
+                            ForEach(visibleFlows) { flow in
                                 BusinessFlowCard(flow: flow, onSelectProject: onSelectProject,
                                                  rootPath: sourceRoot(for: flow.projectId))
                             }
@@ -151,7 +168,7 @@ struct BusinessFlowExplorerView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Recorridos detectados").font(.system(.title2, design: .rounded).weight(.bold))
-                    Text("Desde endpoints y handlers hasta contratos publicados y consumidores de otros microservicios.")
+                    Text("Sigue cada etapa, revisa su confianza y abre el archivo y la línea exactos desde la secuencia visual.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()

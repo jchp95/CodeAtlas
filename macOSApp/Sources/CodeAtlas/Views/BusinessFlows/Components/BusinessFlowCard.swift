@@ -27,6 +27,17 @@ struct BusinessFlowCard: View {
             }
             .padding(14)
 
+            if !flow.steps.isEmpty {
+                Divider()
+                FlowPipelineView(steps: flow.steps.map { step in
+                    FlowPipelineNode(id: step.id, sequence: step.sequence, title: step.symbol,
+                                     category: step.kind, detail: step.detail, file: step.file, line: step.line,
+                                     rootPath: rootPath, confidence: step.confidence, phase: step.kind)
+                })
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+            }
+
             HStack(spacing: 8) {
                 Button { onSelectProject(flow.projectId) } label: { Label("Ver servicio", systemImage: "square.grid.2x2") }
                     .buttonStyle(.bordered)

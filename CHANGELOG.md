@@ -1,3 +1,11 @@
+## 0.17.0 — Evidencia de relaciones y recorridos navegables
+
+- Sustituye la lista básica de relaciones por un explorador de evidencia con búsqueda, filtros por tipo/confianza, métrica de cobertura de fuente y navegación al archivo/línea cuando existe una coincidencia inequívoca.
+- Distingue conexiones HTTP, eventos, referencias de proyecto, imports y dependencias del workspace, y explica la diferencia entre evidencia confirmada e inferida.
+- Añade una secuencia horizontal clicable para flujos internos y distribuidos; cada etapa abre su código fuente, y las vistas pueden filtrarse por tipo de recorrido.
+- Conserva la vista de detalle vertical para inspección completa de confianza, símbolo y contexto.
+- Validación de esta fase: parseo Swift y tests estructurales en este entorno; falta ejecutar `swift build` y las suites .NET en macOS porque los SDK no están disponibles en este runner.
+
 ## 0.16.0 — Integración VS Code mediante puente local autenticado
 
 - Añade un puente HTTP local vinculado exclusivamente a `127.0.0.1`, con token aleatorio en `~/Library/Application Support/CodeAtlas/vscode-bridge.json` y permisos de archivo de propietario.

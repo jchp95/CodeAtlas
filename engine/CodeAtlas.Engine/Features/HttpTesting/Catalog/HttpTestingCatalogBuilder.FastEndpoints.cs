@@ -74,8 +74,8 @@ static partial class HttpTestingCatalogBuilder
                 foreach (var route in routesFromRouteCalls)
                 {
                     if (!emittedDirectRoutes.Add($"{verb}|{route}")) continue;
-                    var sourceNode = configure.DescendantNodes().OfType<InvocationExpressionSyntax>()
-                        .FirstOrDefault(invocation => InvokedName(invocation.Expression) is "Route" or "Routes") ?? configure;
+                    SyntaxNode sourceNode = configure.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                        .FirstOrDefault(invocation => InvokedName(invocation.Expression) is "Route" or "Routes") as SyntaxNode ?? configure;
                     yield return MakeEndpoint(project, root, repositories, "FastEndpoints", verb, route,
                         Relative(root, sourceNode.SyntaxTree.FilePath), Line(sourceNode), requestType, types,
                         project.ListenAddresses, $"FastEndpoints {endpointClass.Identifier.ValueText}.Configure(): Verbs/Routes.");

@@ -62,11 +62,12 @@ func sectionTitle(_ section: String) -> String {
                 architectureSection(snapshot)
             }
         case "Relaciones":
-            page {
-                AtlasPageHeading(eyebrow: "Conectividad", title: "Relaciones y dependencias", detail: "Inspecciona conexiones entre APIs, proyectos, contratos de eventos e infraestructura con su evidencia y nivel de confianza.", systemImage: "arrow.left.arrow.right")
-                relationsSection(snapshot)
-                quickNavigationCard(title: "Seguir un flujo de negocio", detail: "Abrir recorridos desde endpoints y handlers hasta contratos y consumidores.", icon: "point.topleft.down.curvedto.point.bottomright.up", destination: "Flujos", tint: .purple)
-            }
+            RelationExplorerView(snapshot: snapshot, onSelectProject: { projectID in
+                selectedProjectID = projectID
+                selectedSection = "Arquitectura"
+                architectureMenuExpanded = true
+            })
+            .id("relations-\(snapshot.repositoryPath)|\(snapshot.scannedAt)")
         case "Análisis":
             analysisPage(snapshot)
         case "Servicios":

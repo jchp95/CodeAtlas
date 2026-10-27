@@ -54,6 +54,18 @@ struct DistributedFlowCard: View {
             }
             .padding(14)
 
+            if !flow.steps.isEmpty {
+                Divider()
+                FlowPipelineView(steps: flow.steps.map { step in
+                    let root = step.phase == "consumer" ? consumerRootPath : producerRootPath
+                    return FlowPipelineNode(id: step.id, sequence: step.sequence, title: step.symbol,
+                                            category: step.kind, detail: step.detail, file: step.file, line: step.line,
+                                            rootPath: root, confidence: step.confidence, phase: step.phase)
+                })
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+            }
+
             if expanded {
                 Divider()
                 VStack(spacing: 0) {
