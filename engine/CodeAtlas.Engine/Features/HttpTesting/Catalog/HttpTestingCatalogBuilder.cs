@@ -137,31 +137,59 @@ static partial class HttpTestingCatalogBuilder
                 var controllerRouteTemplate = GetAttributeRoute(controller.AttributeLists, "Route") ?? "";
                 foreach (var method in controller.Members.OfType<MethodDeclarationSyntax>())
                 {
-                    var attribute = method.AttributeLists.SelectMany(a => a.Attributes)
-                        .FirstOrDefault(a => TryHttpVerb(AttributeName(a), out _));
-                    if (attribute is null || !TryHttpVerb(AttributeName(attribute), out var verb)) continue;
-                    var actionRoute = GetAttributeString(attribute) ?? GetAttributeRoute(method.AttributeLists, "Route") ?? "";
-                    var controllerName = controller.Identifier.ValueText.EndsWith("Controller", StringComparison.OrdinalIgnoreCase)
-                        ? controller.Identifier.ValueText[..^10] : controller.Identifier.ValueText;
-                    var controllerRoute = controllerRouteTemplate.Replace("[controller]", controllerName, StringComparison.OrdinalIgnoreCase)
-                        .Replace("[action]", method.Identifier.ValueText, StringComparison.OrdinalIgnoreCase);
-                    actionRoute = actionRoute.Replace("[controller]", controllerName, StringComparison.OrdinalIgnoreCase)
-                        .Replace("[action]", method.Identifier.ValueText, StringComparison.OrdinalIgnoreCase);
-                    var route = CombineRoute(controllerRoute, actionRoute);
-                    var bodyType = FindBodyType(method.ParameterList.Parameters, types);
-                    yield return MakeEndpoint(project, root, repositories, "ASP.NET Core Controller", verb, route,
-                        relative, Line(method), bodyType, types, project.ListenAddresses,
-                        $"Atributo {AttributeName(attribute)} en {controller.Identifier.ValueText}.{method.Identifier.ValueText}.");
+                    var httpAttributes = method.AttributeLists.SelectMany(list => list.Attributes)
+                        .Where(attribute => TryHttpVerb(AttributeName(attribute), out _)).ToArray();
+                    foreach (var attribute in httpAttributes)
+                    {
+                        if (!TryHttpVerb(AttributeName(attribute), out var verb)) continue;
+                        var actionRoute = GetAttributeString(attribute) ?? GetAttributeRoute(method.AttributeLists, "Route") ?? "";
+                        var controllerName = controller.Identifier.ValueText.EndsWith("Controller", StringComparison.OrdinalIgnoreCase)
+                            ? controller.Identifier.ValueText[..^10] : controller.Identifier.ValueText;
+                        var controllerRoute = controllerRouteTemplate.Replace("[controller]", controllerName, StringComparison.OrdinalIgnoreCase)
+                            .Replace("[action]", method.Identifier.ValueText, StringComparison.OrdinalIgnoreCase);
+                        actionRoute = actionRoute.Replace("[controller]", controllerName, StringComparison.OrdinalIgnoreCase)
+                            .Replace("[action]", method.Identifier.ValueText, StringComparison.OrdinalIgnoreCase);
+                        var route = CombineRoute(controllerRoute, actionRoute);
+                        var bodyType = FindBodyType(method.ParameterList.Parameters, types);
+                        yield return MakeEndpoint(project, root, repositories, "ASP.NET Core Controller", verb, route,
+                            relative, Line(method), bodyType, types, project.ListenAddresses,
+                            $"Atributo {AttributeName(attribute)} en {controller.Identifier.ValueText}.{method.Identifier.ValueText}.");
+                    }
                 }
             }
 
-            var groups = syntaxRoot.DescendantNodes().OfType<VariableDeclaratorSyntax>()
-                .Where(v => v.Initializer?.Value is InvocationExpressionSyntax)
-                .Select(v => (Name: v.Identifier.ValueText, Invocation: (InvocationExpressionSyntax)v.Initializer!.Value))
-                .Where(v => InvokedName(v.Invocation.Expression) == "MapGroup")
-                .Select(v => (Name: v.Name, Prefix: FirstString(v.Invocation.ArgumentList)))
-                .Where(v => v.Prefix is not null)
-                .ToDictionary(v => v.Name, v => v.Prefix!, StringComparer.Ordinal);
+            // FastEndpoints uses an Endpoint<TRequest,TResponse> base class and declares
+            // the HTTP verb + route inside Configure(). These are not ASP.NET attributes
+            // or Minimal API MapGet calls, so they need an explicit detector.
+            foreach (var endpoint in ScanFastEndpoints(project, syntaxRoot, root, repositories, types))
+                yield return endpoint;
+
+            var groupDefinitions = syntaxRoot.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+                .Where(variable => variable.Initializer?.Value is InvocationExpressionSyntax)
+                .Select(variable => (Name: variable.Identifier.ValueText, Invocation: (InvocationExpressionSyntax)variable.Initializer!.Value))
+                .Where(variable => InvokedName(variable.Invocation.Expression) == "MapGroup")
+                .GroupBy(variable => variable.Name, StringComparer.Ordinal)
+                .Where(group => group.Count() == 1)
+                .Select(group => group.Single()).ToArray();
+            var groups = new Dictionary<string, string>(StringComparer.Ordinal);
+            // Resolve nested groups over several passes: api.MapGroup("/v1") followed by
+            // v1.MapGroup("/cargo") must produce /v1/cargo, regardless of declaration nesting.
+            for (var pass = 0; pass < groupDefinitions.Length; pass++)
+            {
+                var changed = false;
+                foreach (var definition in groupDefinitions)
+                {
+                    var localPrefix = FirstString(definition.Invocation.ArgumentList);
+                    if (string.IsNullOrWhiteSpace(localPrefix) || groups.ContainsKey(definition.Name)) continue;
+                    var parentPrefix = definition.Invocation.Expression is MemberAccessExpressionSyntax groupMember
+                        && groupMember.Expression is IdentifierNameSyntax parentIdentifier
+                        && groups.TryGetValue(parentIdentifier.Identifier.ValueText, out var foundParent)
+                            ? foundParent : string.Empty;
+                    groups[definition.Name] = CombineRoute(parentPrefix, localPrefix);
+                    changed = true;
+                }
+                if (!changed) break;
+            }
 
             foreach (var invocation in syntaxRoot.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {

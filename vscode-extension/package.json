@@ -1,0 +1,43 @@
+{
+  "name": "codeatlas-local-bridge",
+  "displayName": "CodeAtlas — Local Bridge",
+  "description": "Abre archivos y workspaces de Visual Studio Code en CodeAtlas + StackPilot para macOS mediante un puente local autenticado.",
+  "version": "0.1.0",
+  "publisher": "codeatlas-local",
+  "license": "UNLICENSED",
+  "engines": { "vscode": "^1.88.0" },
+  "categories": ["Other", "Visualization"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:codeAtlas.openActiveFile",
+    "onCommand:codeAtlas.openWorkspace",
+    "onCommand:codeAtlas.checkConnection"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "codeAtlas.openActiveFile", "title": "CodeAtlas: Abrir archivo activo en CodeAtlas", "category": "CodeAtlas" },
+      { "command": "codeAtlas.openWorkspace", "title": "CodeAtlas: Abrir workspace en CodeAtlas", "category": "CodeAtlas" },
+      { "command": "codeAtlas.checkConnection", "title": "CodeAtlas: Comprobar conexión local", "category": "CodeAtlas" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "codeAtlas.openActiveFile", "when": "resourceScheme == file", "group": "navigation@90" }
+      ],
+      "explorer/context": [
+        { "command": "codeAtlas.openActiveFile", "when": "resourceScheme == file", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "CodeAtlas Bridge",
+      "properties": {
+        "codeAtlas.bridgePort": {
+          "type": "number",
+          "default": 38471,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Puerto loopback del puente local de CodeAtlas. Debe coincidir con la configuración segura de la aplicación."
+        }
+      }
+    }
+  }
+}

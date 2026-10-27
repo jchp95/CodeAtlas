@@ -10,7 +10,10 @@ func endpointDetail(_ endpoint: HTTPApiEndpoint) -> some View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(endpoint.route).font(.title2.bold().monospaced())
                         Text("\(endpoint.projectName) · \(endpoint.framework)").font(.callout).foregroundStyle(.secondary)
-                        Text("\(endpoint.sourcePath):\(endpoint.line)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                        Button { openSourceFile(endpoint.sourcePath, line: endpoint.line, workspaceRoot: endpoint.workspaceRoot) } label: {
+                            Label("\(endpoint.sourcePath):\(endpoint.line)", systemImage: "arrow.up.forward.square")
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }.buttonStyle(.plain).help("Abrir archivo y línea en el explorador de código")
                     }
                     Spacer()
                     Button { saveGeneratedHTTP(endpoint) } label: { Label("Crear .http", systemImage: "doc.badge.plus") }
@@ -128,7 +131,7 @@ func endpointDetail(_ endpoint: HTTPApiEndpoint) -> some View {
                         Text("\(call.sourcePath):\(call.line)").font(.caption.monospaced()).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button { openSourceFile(call.sourcePath, workspaceRoot: call.workspaceRoot) } label: { Label("Abrir origen", systemImage: "arrow.up.forward.square") }
+                    Button { openSourceFile(call.sourcePath, line: call.line, workspaceRoot: call.workspaceRoot) } label: { Label("Abrir origen", systemImage: "arrow.up.forward.square") }
                         .buttonStyle(.bordered)
                 }
                 HStack(spacing: 8) {

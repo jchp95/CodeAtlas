@@ -8,6 +8,7 @@ struct ContentView: View {
     @State var repositoryURLs: [URL] = []
     @StateObject var aiService = AIAssistantService()
     @State var isScanning = false
+    @State var scanProgress: WorkspaceScanProgress?
     @State var errorMessage: String?
     @State var selectedSection = "Resumen"
     @State var architectureMenuExpanded = true
@@ -19,6 +20,12 @@ struct ContentView: View {
     @State var lastFingerprint: String?
     @State var httpCatalog: HTTPTestingCatalog?
     @State var isLoadingHTTPCatalog = false
+    @State var codeFilePath: String?
+    @State var codeRootPath: String?
+    @State var codeLine = 1
+    @State var showBuildConsole = false
+    @StateObject var buildConsoleModel = BuildConsoleModel()
+    @ObservedObject var vscodeBridge = VSCodeBridgeService.shared
     let engine = EngineClient()
 
     var body: some View {
@@ -30,8 +37,31 @@ struct ContentView: View {
                 Rectangle()
                     .fill(Color.primary.opacity(0.055))
                     .frame(height: 1)
-                if ["Servicios", "Perfiles", "Diagnóstico"].contains(selectedSection) {
+                if isScanning, let scanProgress {
+                    HStack(spacing: 12) {
+                        ProgressView(value: scanProgress.fraction)
+                            .frame(maxWidth: 170)
+                        Text(scanProgress.message)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                }
+                if selectedSection == "Git" {
+                    GitWorkbenchView(workspaceURLs: repositoryURLs)
+                } else if selectedSection == "Código" {
+                    CodeExplorerView(workspaceURLs: repositoryURLs, aiService: aiService,
+                                     requestedFilePath: $codeFilePath,
+                                     requestedRootPath: $codeRootPath,
+                                     requestedLine: $codeLine)
+                } else if selectedSection == "Servicios" {
                     StackPilotDashboard(section: selectedSection, workspaceURLs: repositoryURLs)
+                } else if selectedSection == "Perfiles" {
+                    StackPilotProfilesView(workspaceURLs: repositoryURLs)
+                } else if selectedSection == "Diagnóstico" {
+                    StackPilotDiagnosticsView(workspaceURLs: repositoryURLs)
                 } else if selectedSection == "Configuración IA" {
                     AISettingsView(service: aiService)
                 } else if selectedSection == "Asistente IA" {
@@ -40,6 +70,11 @@ struct ContentView: View {
                     selectedContent(snapshot)
                 } else {
                     emptyState
+                }
+                if showBuildConsole {
+                    BuildConsoleView(workspaceURLs: repositoryURLs, model: buildConsoleModel, onClose: { showBuildConsole = false })
+                        .frame(height: 270)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 statusBar
             }
@@ -51,6 +86,38 @@ struct ContentView: View {
         .alert("No se pudo analizar el repositorio", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("Aceptar", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "Error desconocido") }
+        .onReceive(NotificationCenter.default.publisher(for: .codeAtlasNavigateSection)) { notification in
+            guard let section = notification.object as? String else { return }
+            selectedSection = section
+            if section == "Perfiles" || section == "Diagnóstico" { operationsMenuExpanded = true }
+            if section == "Código" { developmentMenuExpanded = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .codeAtlasOpenSource)) { notification in
+            guard let path = notification.userInfo?["path"] as? String else { return }
+            let root = notification.userInfo?["root"] as? String ?? ""
+            let line = notification.userInfo?["line"] as? Int ?? 1
+            if !root.isEmpty, !repositoryURLs.contains(where: { $0.standardizedFileURL.path == URL(fileURLWithPath: root).standardizedFileURL.path }) {
+                repositoryURLs = normalizedRepositoryRoots(repositoryURLs + [URL(fileURLWithPath: root, isDirectory: true)])
+                repositoryURL = repositoryURLs.first
+            }
+            codeRootPath = root.isEmpty ? repositoryURL?.path : root
+            codeLine = max(1, line)
+            codeFilePath = path
+            selectedSection = "Código"
+            developmentMenuExpanded = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .codeAtlasOpenWorkspace)) { notification in
+            guard let path = notification.userInfo?["path"] as? String else { return }
+            let root = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+            repositoryURLs = normalizedRepositoryRoots(repositoryURLs + [root])
+            repositoryURL = repositoryURLs.first
+            snapshot = nil
+            httpCatalog = nil
+            lastFingerprint = nil
+            selectedProjectID = nil
+            selectedSection = "Resumen"
+            Task { await rescan() }
+        }
     }
 
     var sidebar: some View {
@@ -58,6 +125,7 @@ struct ContentView: View {
             Section("INICIO") {
                 navigationRow("Resumen", section: "Resumen", icon: "rectangle.grid.2x2.fill")
                 navigationRow("Cambios recientes", section: "Cambios", icon: "arrow.triangle.2.circlepath")
+                navigationRow("Control Git", section: "Git", icon: "arrow.triangle.branch")
             }
 
             Section("EXPLORAR") {
@@ -72,6 +140,7 @@ struct ContentView: View {
                 }
 
                 DisclosureGroup(isExpanded: $developmentMenuExpanded) {
+                    navigationRow("Explorador de código", section: "Código", icon: "chevron.left.forwardslash.chevron.right")
                     navigationRow("Endpoints HTTP", section: "Endpoints HTTP", icon: "network")
                 } label: {
                     Label("Desarrollo y pruebas", systemImage: "curlybraces")
@@ -158,7 +227,7 @@ struct ContentView: View {
                     Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(.green)
                     Text("Análisis local · IA opcional").font(.caption2).foregroundStyle(.secondary)
                     Spacer()
-                    AtlasStatusPill(title: "0.13.1", color: .secondary)
+                    AtlasStatusPill(title: "0.15.0", color: .secondary)
                 }
                 HStack(spacing: 8) {
                     Label("Apariencia", systemImage: appearanceMode == "dark" ? "moon.fill" : appearanceMode == "light" ? "sun.max.fill" : "circle.lefthalf.filled")
@@ -229,6 +298,12 @@ struct ContentView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
+            Button { withAnimation(.snappy(duration: 0.2)) { showBuildConsole.toggle() } } label: {
+                Label("Build", systemImage: "hammer")
+            }
+            .buttonStyle(showBuildConsole ? .borderedProminent : .bordered)
+            .controlSize(.regular)
+            .help("Abrir consola de compilación y pruebas · ⌘⇧B")
 
             if !["Servicios", "Perfiles", "Diagnóstico"].contains(selectedSection) {
                 Toggle(isOn: $watchingRepository) {

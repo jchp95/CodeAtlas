@@ -10,6 +10,8 @@ func sectionTitle(_ section: String) -> String {
         case "Flujos": return "Flujos de negocio"
         case "Análisis": return "Análisis y evidencias"
         case "Cambios": return "Cambios recientes"
+        case "Git": return "Control Git y GitHub"
+        case "Código": return "Explorador de código"
         case "Endpoints HTTP": return "Endpoints HTTP"
         case "Servicios": return "Servicios locales"
         case "Perfiles": return "Perfiles de ejecución"
@@ -28,6 +30,8 @@ func sectionTitle(_ section: String) -> String {
         case "Flujos": return "point.topleft.down.curvedto.point.bottomright.up"
         case "Análisis": return "viewfinder"
         case "Cambios": return "arrow.triangle.2.circlepath"
+        case "Git": return "arrow.triangle.branch"
+        case "Código": return "chevron.left.forwardslash.chevron.right"
         case "Endpoints HTTP": return "network"
         case "Servicios": return "server.rack"
         case "Perfiles": return "square.stack.3d.up"
@@ -43,6 +47,8 @@ func sectionTitle(_ section: String) -> String {
         switch selectedSection {
         case "Resumen":
             summaryPage(snapshot)
+        case "Git":
+            GitWorkbenchView(workspaceURLs: repositoryURLs)
         case "Cambios":
             page {
                 AtlasPageHeading(eyebrow: "Git · Snapshot · Impacto", title: "Cambios recientes", detail: "Compara el estado actual con el último snapshot e identifica repositorios y flujos afectados.", systemImage: "arrow.triangle.2.circlepath")
@@ -63,8 +69,12 @@ func sectionTitle(_ section: String) -> String {
             }
         case "Análisis":
             analysisPage(snapshot)
-        case "Servicios", "Perfiles", "Diagnóstico":
+        case "Servicios":
             StackPilotDashboard(section: selectedSection, workspaceURLs: repositoryURLs)
+        case "Perfiles":
+            StackPilotProfilesView(workspaceURLs: repositoryURLs)
+        case "Diagnóstico":
+            StackPilotDiagnosticsView(workspaceURLs: repositoryURLs)
         case "Asistente IA":
             AIAssistantView(service: aiService, snapshot: snapshot, onOpenSettings: { selectedSection = "Configuración IA"; intelligenceMenuExpanded = true })
         case "Configuración IA":
@@ -77,6 +87,11 @@ func sectionTitle(_ section: String) -> String {
             })
             .id("\(snapshot.repositoryPath)|\(snapshot.scannedAt)")
             .background(.clear)
+        case "Código":
+            CodeExplorerView(workspaceURLs: repositoryURLs, aiService: aiService,
+                             requestedFilePath: $codeFilePath,
+                             requestedRootPath: $codeRootPath,
+                             requestedLine: $codeLine)
         case "Endpoints HTTP":
             EndpointHTTPExplorerView(
                 repositoryURL: repositoryURL,

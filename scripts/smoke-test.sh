@@ -84,6 +84,10 @@ if (!express?.codeEvidence?.some((e) => e.category === 'service-registration' &&
 if (!express?.codeEvidence?.some((e) => e.category === 'constructor-injection' && e.symbol.endsWith('ITrackingClient') && e.detail.includes('Constructor primario'))) failures.push('missing C# 12 primary-constructor injection evidence for ITrackingClient');
 if (failures.length) {
   console.error('Smoke test failed:\n- ' + failures.join('\n- '));
+  if (failures.some(failure => failure.includes('distributed flow did not trace') || failure.includes('IConsumer<T>'))) {
+    console.error('Distributed flow trace:', JSON.stringify(distributedFlow ?? null, null, 2));
+    console.error('Consumer business-flow candidates:', JSON.stringify(flows.filter(flow => flow.projectName === 'ZasTrack.Api' && flow.entryPoint.startsWith('CONSUME ')), null, 2));
+  }
   process.exit(1);
 }
 console.log(`Smoke test passed: ${snapshot.projects.length} projects, ${snapshot.relations.length} relations, ${flows.length} business flows, ${distributedFlows.length} distributed flows.`);

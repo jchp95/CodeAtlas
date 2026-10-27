@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FlowStepRow: View {
     let step: BusinessFlowStep
+    var rootPath: String? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -18,8 +19,10 @@ struct FlowStepRow: View {
                     Spacer(minLength: 0)
                     ConfidencePill(value: step.confidence)
                 }
-                Text("\(step.file):\(step.line)")
-                    .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                Button { SourceNavigator.open(step.file, root: rootPath, line: step.line) } label: {
+                    Label("\(step.file):\(step.line)", systemImage: "arrow.up.forward.square")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                }.buttonStyle(.plain).help("Abrir esta ubicación en el explorador de código")
                 Text(step.detail).font(.caption).foregroundStyle(.secondary)
             }
         }

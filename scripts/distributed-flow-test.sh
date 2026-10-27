@@ -35,6 +35,7 @@ if (!target.steps.some(step => step.phase === 'consumer' && step.kind === 'messa
 }
 if (!target.steps.some(step => step.phase === 'consumer' && step.symbol.includes('CargoProjection.ApplyAsync'))) {
   console.error('Distributed-flow test failed: consumer business logic was not traced.', JSON.stringify(target.steps.filter(step => step.phase === 'consumer'), null, 2));
+  console.error('Consumer project source evidence:', JSON.stringify((snapshot.businessFlows || []).filter(flow => flow.projectName === target.consumerProjectName && flow.steps.some(step => step.kind === 'message-consumer')), null, 2));
   process.exit(1);
 }
 console.log(`Distributed-flow test passed: ${target.producerProjectName} → ${target.contract} → ${target.consumerProjectName}, ${target.steps.length} source-backed steps.`);

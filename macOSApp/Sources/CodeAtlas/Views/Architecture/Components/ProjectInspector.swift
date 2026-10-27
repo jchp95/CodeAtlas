@@ -33,7 +33,10 @@ struct ProjectInspector: View {
                 ForEach(project.httpTargets) { target in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(target.url).font(.system(.caption, design: .monospaced))
-                        Text(target.sourcePath).font(.caption2).foregroundStyle(.secondary)
+                        Button { SourceNavigator.open(target.sourcePath, root: project.repositoryRoot, line: 1) } label: {
+                            Label(target.sourcePath, systemImage: "arrow.up.forward.square")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }.buttonStyle(.plain)
                     }
                 }
             }
@@ -68,9 +71,12 @@ struct ProjectInspector: View {
                                         .foregroundStyle(item.confidence == "resolved" ? .green : .orange)
                                 }
                                 Text(item.detail).font(.caption).foregroundStyle(.secondary)
-                                Text("\(item.file):\(item.line)")
-                                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
-                                    .textSelection(.enabled)
+                                Button { SourceNavigator.open(item.file, root: project.repositoryRoot, line: item.line) } label: {
+                                    Label("\(item.file):\(item.line)", systemImage: "arrow.up.forward.square")
+                                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Abrir esta evidencia en el explorador de código")
                             }
                             .padding(9)
                             .frame(maxWidth: .infinity, alignment: .leading)

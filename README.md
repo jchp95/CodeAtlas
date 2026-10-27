@@ -1,6 +1,25 @@
-# CodeAtlas + StackPilot — MVP 0.13.1
+# CodeAtlas + StackPilot — MVP 0.16.0
 
 macOS desktop developer control center that combines a block-based architecture map, Git snapshot comparisons, local microservice operations, HTTP endpoint testing, and an optional AI engineering assistant.
+
+## What's new in 0.15.0
+
+- Adds a build/test dock with live output and process cancellation for detected .NET, npm and Swift targets.
+- Adds standalone StackPilot Profiles and Diagnostics pages, with per-profile lifecycle controls, service health results and direct access to logs.
+- Adds a Git workbench for local branches, guarded checkout, status, staged/unstaged diffs, recent history and optional GitHub pull-request listing through the authenticated `gh` CLI.
+- Adds extension-aware formatting integrations for C#, Swift, JS/TS, JSON, Markdown, YAML, HTML/CSS and shell. Formatters are invoked only when the user asks and external package installs are disabled.
+- Adds provider-backed AI code completion at the caret. Suggestions are reviewed before insertion and do not write a source file automatically.
+- Keeps the code explorer, source-linked analysis and FastEndpoints detection introduced in 0.14.0.
+- This is still an incremental native IDE. A full LSP-backed editing experience, complete terminal/VS Code bridge, and macOS end-to-end validation remain planned work.
+
+## What's new in 0.14.0
+
+- Adds a multi-root file explorer and native editable source view with line numbers, search, save/reload, unsaved-change protection and a right-hand inspector.
+- Links source-backed findings from endpoints, outgoing HTTP calls and business-flow steps into the editor at the relevant file and line.
+- Detects FastEndpoints route declarations and improves nested Minimal API group-prefix resolution and controller methods with multiple HTTP verb attributes.
+- Exposes per-repository workspace-analysis progress without performing the .NET scan on the SwiftUI main thread.
+- Adds a runnable regression test for workspace file-tree filtering and places it in the startup gate.
+- This is an incremental IDE foundation, not yet a complete LSP-powered editor. Native full build and .NET integration suite must be verified on macOS with .NET 10 / Xcode.
 
 ## What's new in 0.13.1
 
@@ -249,3 +268,10 @@ See [`docs/STACKPILOT.md`](docs/STACKPILOT.md) for profile schema, Compose examp
 - HTTP and message relationships from the architecture engine can be inferred, not proof of runtime traffic.
 - Roslyn semantic analysis is best-effort: it uses source trees plus platform assemblies and package compile assets from `obj/project.assets.json` when present. It does not run MSBuild, execute source generators, fully resolve every project reference, or prove MassTransit routing and runtime delivery.
 - In this generation environment, the pure Swift runtime-linker tests, Swift syntax parsing, and TypeScript analyzer JSON smoke check passed. The complete .NET engine and native SwiftUI app could not be compiled/run here because the .NET and macOS SDKs are unavailable. Run `./scripts/smoke-test.sh` on the target Mac before relying on this release.
+
+
+## Integración con Visual Studio Code
+
+La carpeta `vscode-extension/` contiene una extensión local para abrir archivos y workspaces desde VS Code en CodeAtlas. El puente nativo escucha exclusivamente en `127.0.0.1:38471` y valida un token almacenado con permisos de usuario en `~/Library/Application Support/CodeAtlas/vscode-bridge.json`.
+
+En macOS, inicia CodeAtlas y después ejecuta desde el directorio del proyecto `./scripts/package-vscode-extension.sh`. Instala el archivo generado en `artifacts/vscode-extension/CodeAtlas-VSCode-Bridge-0.1.0.vsix` mediante `code --install-extension <ruta-al-vsix>`. Los comandos aparecen en la paleta como `CodeAtlas: Abrir archivo activo en CodeAtlas`, `CodeAtlas: Abrir workspace en CodeAtlas` y `CodeAtlas: Comprobar conexión local`. Esta primera integración facilita navegación entre editores; no pretende sincronizar una sesión de depuración ni sustituir las extensiones de lenguaje de VS Code.

@@ -63,6 +63,10 @@ struct BusinessFlowExplorerView: View {
         }
     }
 
+    private func sourceRoot(for projectID: String) -> String? {
+        snapshot.projects.first(where: { $0.id == projectID })?.repositoryRoot ?? snapshot.repositoryPath
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -111,7 +115,9 @@ struct BusinessFlowExplorerView: View {
                             Text("Productor → contrato de mensajería → consumidor, con referencias a los archivos fuente.")
                                 .font(.callout).foregroundStyle(.secondary)
                             ForEach(filteredDistributedFlows) { flow in
-                                DistributedFlowCard(flow: flow, onSelectProject: onSelectProject)
+                                DistributedFlowCard(flow: flow, onSelectProject: onSelectProject,
+                                                    producerRootPath: sourceRoot(for: flow.producerProjectId),
+                                                    consumerRootPath: sourceRoot(for: flow.consumerProjectId))
                             }
                         }
                     }
@@ -119,7 +125,8 @@ struct BusinessFlowExplorerView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Flujos dentro de cada servicio").font(.title2.bold())
                             ForEach(filteredFlows) { flow in
-                                BusinessFlowCard(flow: flow, onSelectProject: onSelectProject)
+                                BusinessFlowCard(flow: flow, onSelectProject: onSelectProject,
+                                                 rootPath: sourceRoot(for: flow.projectId))
                             }
                         }
                     }

@@ -1,5 +1,7 @@
 # CodeAtlas + StackPilot — estructura de código
 
+La versión 0.15.0 añade herramientas de build/test, Git, perfiles/diagnóstico y comandos de formato/IA sobre la base 0.14.0. La versión 0.14.0 añadió navegación al código fuente y descubrimiento FastEndpoints. El editor todavía no sustituye un editor LSP completo.
+
 La versión 0.13.1 reorganiza el código por funcionalidades y responsabilidades. El cambio es estructural: no busca redefinir reglas de análisis, datos de snapshot, criterios de detección ni operaciones de StackPilot.
 
 ## Principios aplicados
@@ -63,6 +65,9 @@ macOSApp/Sources/CodeAtlas/
     │   └── Components/                  # Tarjetas, filas, métricas y confianza
     ├── DesignSystem/
     ├── HTTPTesting/                   # Navegación, detalles y ejecución
+    ├── CodeEditor/                    # Árbol, editor AppKit, formato y asistencia IA
+    ├── Build/                         # Selección de tareas, ejecución y salida de build/test
+    ├── Git/                           # Ramas, cambios, diff, historial y GitHub CLI
     └── StackPilot/                    # Presentación, perfiles y acciones
 ```
 
@@ -83,3 +88,10 @@ Antes de lanzar la aplicación en macOS, `scripts/verify-before-launch.sh` ejecu
 ### Trazado de llamadas locales sin enlace semántico
 
 El analizador de flujos utiliza primero los símbolos de Roslyn. Si una referencia incompleta impide resolver una llamada entre tipos locales, puede usar un fallback conservador basado en el tipo declarado del receptor y una firma fuente única. Estos pasos se marcan como `inferred`; no se crea un enlace cuando la búsqueda es ambigua.
+
+
+## Integración VS Code
+
+- `macOSApp/Sources/CodeAtlas/Infrastructure/VSCodeBridge/VSCodeBridgeService.swift`: protocolo HTTP mínimo autenticado, listener de loopback y despacho de navegación a la UI.
+- `vscode-extension/`: extensión JavaScript sin dependencias externas para navegar desde VS Code a CodeAtlas.
+- `scripts/vscode-extension-test.sh` y `scripts/package-vscode-extension.sh`: validación del manifiesto/contrato y empaquetado VSIX local.

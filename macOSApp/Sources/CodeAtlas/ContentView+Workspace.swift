@@ -48,9 +48,12 @@ func chooseRepository(addToWorkspace: Bool) {
         guard !repositoryURLs.isEmpty else { return }
         repositoryURL = repositoryURLs.first
         isScanning = true
-        defer { isScanning = false }
+        scanProgress = WorkspaceScanProgress(phase: "preparing", completedRoots: 0, totalRoots: repositoryURLs.count, rootName: "")
+        defer { isScanning = false; scanProgress = nil }
         do {
-            let result = try await engine.scanWorkspace(repositoryURLs: repositoryURLs)
+            let result = try await engine.scanWorkspace(repositoryURLs: repositoryURLs) { progress in
+                Task { @MainActor in self.scanProgress = progress }
+            }
             snapshot = result
             if let selectedProjectID, !result.projects.contains(where: { $0.id == selectedProjectID }) { self.selectedProjectID = nil }
             lastFingerprint = try? await engine.workspaceFingerprint(repositoryURLs: repositoryURLs)

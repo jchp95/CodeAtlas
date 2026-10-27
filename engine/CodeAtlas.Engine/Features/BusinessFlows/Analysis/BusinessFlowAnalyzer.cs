@@ -51,7 +51,11 @@ internal static partial class BusinessFlowAnalyzer
             }
 
             if (entry.HandlerNode is not null)
+            {
                 trace.TraceNode(entry.HandlerNode, depth: 0);
+                if (entry.Kind == "message-consumer")
+                    trace.TraceSourceLocalFallbacks(entry.HandlerNode, depth: 0);
+            }
 
             var normalizedEndpoint = NormalizeWhitespace(entry.Endpoint);
             var material = $"{projectId}|{normalizedEndpoint}|{entry.File}|{entry.Kind}";

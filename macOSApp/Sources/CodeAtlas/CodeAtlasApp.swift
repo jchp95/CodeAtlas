@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct CodeAtlasApp: App {
+    @StateObject private var vscodeBridge = VSCodeBridgeService.shared
     @AppStorage("appearanceMode") private var appearanceMode = "system"
 
     private var preferredScheme: ColorScheme? {
@@ -16,6 +17,7 @@ struct CodeAtlasApp: App {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(preferredScheme)
+                .onAppear { vscodeBridge.start() }
         }
         .windowStyle(.automatic)
     }

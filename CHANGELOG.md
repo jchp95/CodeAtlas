@@ -1,3 +1,33 @@
+## 0.16.0 — Integración VS Code mediante puente local autenticado
+
+- Añade un puente HTTP local vinculado exclusivamente a `127.0.0.1`, con token aleatorio en `~/Library/Application Support/CodeAtlas/vscode-bridge.json` y permisos de archivo de propietario.
+- Añade una extensión instalable de Visual Studio Code para abrir el archivo activo en CodeAtlas, enviar un workspace y comprobar la conexión; usa APIs Node integradas, no incorpora dependencias npm de ejecución ni expone un listener en la red local.
+- Expone estado del puente en la barra inferior de CodeAtlas y añade una regresión de estructura/seguridad para los contratos de extensión y app.
+- Incluye script para empaquetar un VSIX local e instrucciones de instalación.
+- Limitación de validación: el puente y SwiftUI requieren compilación y pruebas de runtime en macOS. La prueba Node/XML y el análisis sintáctico de Swift son verificables en este entorno, pero no sustituyen una prueba de conexión real entre VS Code y CodeAtlas.
+
+## 0.15.0 — Herramientas de desarrollo, Git y asistencia de código
+
+- Añade un dock inferior de Build/Tests que ejecuta comandos detectados para .NET, npm y Swift con salida en vivo, cancelación y un límite de memoria para el registro.
+- Separa Perfiles de ejecución y Diagnóstico en vistas con operaciones explícitas de inicio/parada/enable y métricas de proceso/health checks; incorpora acceso a logs.
+- Añade un workbench Git para listar ramas, mostrar estado local, diff staged/unstaged e historial, cambiar de rama con confirmación y abrir archivos en CodeAtlas. La operación checkout delega la protección contra sobrescritura en Git y no descarta cambios por cuenta propia.
+- Añade una vista GitHub opcional mediante GitHub CLI (`gh`): valida la autenticación y consulta repositorio/pull requests sin almacenar tokens de GitHub en CodeAtlas.
+- Añade formateo por extensión: `dotnet format whitespace` para C#, `swift-format` para Swift, `shfmt` para shell y Prettier local (`npx --no-install`) para JavaScript/TypeScript/JSON/Markdown/YAML/HTML/CSS. No instala paquetes ni descarga formateadores automáticamente.
+- Añade una acción de autocompletado/asistencia de código que usa el proveedor IA configurado (Ollama o Anthropic), limita el contexto alrededor del cursor y permite revisar/copiar/insertar la propuesta manualmente.
+- Añade regresiones estructurales para el dock, Git, perfiles/diagnóstico, formateo y asistencia IA.
+- Validación en este entorno: el análisis sintáctico de fuentes Swift, los tests de árbol, la estructura vertical slice y los tests independientes de modelo/enlaces pueden ejecutarse localmente. No hay SDK .NET ni SDK de macOS aquí, de modo que la compilación integral y la suite de integración .NET deben confirmarse en el Mac.
+
+## 0.14.0 — Navegación al código, editor nativo y descubrimiento FastEndpoints
+
+- Añade un explorador de workspace con árbol recursivo multi-raíz, búsqueda por nombre/ruta, exclusión de directorios generados y límite de seguridad para repositorios grandes.
+- Añade un editor AppKit nativo con números de línea, búsqueda integrada, salto a línea, guardado UTF-8, recarga y confirmación explícita antes de descartar cambios sin guardar.
+- Añade un inspector derecho para la fuente seleccionada, con ruta, lenguaje, tamaño, fecha de modificación y acciones de Finder/copiar ruta.
+- Conecta rutas y evidencias de endpoints, flujos de negocio y análisis con el archivo y la línea reales mediante navegación interna.
+- Añade detector de endpoints FastEndpoints (`Endpoint<TRequest,TResponse>` y convenciones `Configure`) y mejora el análisis de rutas agrupadas de Minimal API y múltiples atributos HTTP en controllers.
+- Muestra progreso del análisis por repositorio y fase, mientras el proceso del motor se ejecuta fuera del hilo de interfaz.
+- Añade regresión ejecutable de `CodeFileNode` y refuerza el gate de inicio con los nuevos controles estructurales.
+- Validación disponible aquí: tests del árbol, pruebas de estructura vertical slice, parseo sintáctico de Swift y pruebas independientes de enlaces pasan. La compilación .NET 10 y la compilación SwiftUI deben ejecutarse en macOS, pues este entorno no dispone de esos SDK completos.
+
 ## 0.13.1 — Fallback de trazado para llamadas locales con símbolos incompletos
 
 - Evita perder pasos de un flujo distribuido cuando Roslyn no puede enlazar una llamada de método local debido a referencias incompletas en el proyecto analizado.

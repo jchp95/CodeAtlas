@@ -3,6 +3,8 @@ import SwiftUI
 struct DistributedFlowCard: View {
     let flow: DistributedFlow
     let onSelectProject: (String) -> Void
+    var producerRootPath: String? = nil
+    var consumerRootPath: String? = nil
     @State private var expanded = true
 
     var body: some View {
@@ -56,7 +58,8 @@ struct DistributedFlowCard: View {
                 Divider()
                 VStack(spacing: 0) {
                     ForEach(flow.steps.sorted { $0.sequence < $1.sequence }) { step in
-                        DistributedFlowStepRow(step: step)
+                        DistributedFlowStepRow(step: step,
+                                               rootPath: step.phase == "producer" ? producerRootPath : step.phase == "consumer" ? consumerRootPath : producerRootPath)
                         if step.id != flow.steps.last?.id { Divider().padding(.leading, 58) }
                     }
                 }

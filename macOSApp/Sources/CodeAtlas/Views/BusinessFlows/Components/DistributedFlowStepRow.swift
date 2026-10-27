@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DistributedFlowStepRow: View {
     let step: DistributedFlowStep
+    var rootPath: String? = nil
 
     private var phaseLabel: String {
         switch step.phase {
@@ -25,7 +26,10 @@ struct DistributedFlowStepRow: View {
                     Spacer(minLength: 0)
                     ConfidencePill(value: step.confidence)
                 }
-                Text("\(step.file):\(step.line)").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                Button { SourceNavigator.open(step.file, root: rootPath, line: step.line) } label: {
+                    Label("\(step.file):\(step.line)", systemImage: "arrow.up.forward.square")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                }.buttonStyle(.plain).help("Abrir esta ubicación en el explorador de código")
                 Text(step.detail).font(.caption).foregroundStyle(.secondary)
             }
         }

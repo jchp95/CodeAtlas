@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="codeatlas-local-bridge" Version="0.1.0" Publisher="codeatlas-local" />
+    <DisplayName>CodeAtlas — Local Bridge</DisplayName>
+    <Description xml:space="preserve">Open files and workspaces from Visual Studio Code in CodeAtlas + StackPilot for macOS through a token-authenticated loopback bridge.</Description>
+    <Tags>CodeAtlas,macOS,workspace,navigation</Tags>
+    <Categories>Other</Categories>
+    <GalleryFlags>Public</GalleryFlags>
+    <Properties>
+      <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.88.0" />
+      <Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace" />
+    </Properties>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Code" />
+  </Installation>
+  <Dependencies />
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" />
+    <Asset Type="Microsoft.VisualStudio.Code.Extension" Path="extension" />
+  </Assets>
+</PackageManifest>

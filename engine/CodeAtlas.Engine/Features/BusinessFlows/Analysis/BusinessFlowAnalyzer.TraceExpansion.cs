@@ -41,6 +41,26 @@ private sealed class FlowTrace(
             }
         }
 
+        // Consumer methods are especially likely to have incomplete external references (for
+        // example, MassTransit assemblies not restored in a source-only workspace). Run the
+        // conservative unique-source fallback after semantic tracing as well. Step keys keep
+        // already resolved Roslyn edges unchanged, while a missing edge can still be recovered.
+        public void TraceSourceLocalFallbacks(SyntaxNode node, int depth)
+        {
+            if (depth > MaxDepth || Steps.Count >= MaxSteps) return;
+            var invocations = node.DescendantNodesAndSelf(child =>
+                    child == node || child is not (MethodDeclarationSyntax or LocalFunctionStatementSyntax or LambdaExpressionSyntax or AnonymousMethodExpressionSyntax))
+                .OfType<InvocationExpressionSyntax>()
+                .OrderBy(invocation => invocation.SpanStart)
+                .ToArray();
+            foreach (var invocation in invocations)
+            {
+                if (Steps.Count >= MaxSteps) break;
+                var name = InvokedName(invocation.Expression);
+                _ = TryTraceSourceLocalMethod(invocation, semanticModels[invocation.SyntaxTree], name, depth);
+            }
+        }
+
         private void TraceInvocation(InvocationExpressionSyntax invocation, int depth)
         {
             var methodName = InvokedName(invocation.Expression);

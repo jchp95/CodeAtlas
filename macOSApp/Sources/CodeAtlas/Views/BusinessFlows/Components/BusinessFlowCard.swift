@@ -3,6 +3,7 @@ import SwiftUI
 struct BusinessFlowCard: View {
     let flow: BusinessFlow
     let onSelectProject: (String) -> Void
+    var rootPath: String? = nil
     @State private var expanded = true
 
     var body: some View {
@@ -15,8 +16,10 @@ struct BusinessFlowCard: View {
                     .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 5) {
                     Text(flow.name).font(.headline)
-                    Text("\(flow.projectName) · \(flow.entryFile):\(flow.entryLine)")
-                        .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    Button { SourceNavigator.open(flow.entryFile, root: rootPath, line: flow.entryLine) } label: {
+                        Label("\(flow.projectName) · \(flow.entryFile):\(flow.entryLine)", systemImage: "arrow.up.forward.square")
+                            .font(.caption.monospaced()).foregroundStyle(.secondary)
+                    }.buttonStyle(.plain).help("Abrir el punto de entrada en el explorador de código")
                     Text(flow.summary).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
@@ -40,7 +43,7 @@ struct BusinessFlowCard: View {
                 Divider()
                 VStack(spacing: 0) {
                     ForEach(flow.steps.sorted { $0.sequence < $1.sequence }) { step in
-                        FlowStepRow(step: step)
+                        FlowStepRow(step: step, rootPath: rootPath)
                         if step.id != flow.steps.last?.id { Divider().padding(.leading, 58) }
                     }
                 }

@@ -16,6 +16,10 @@ if (post && post.schemaSource !== 'source-type') failures.push(`expected source-
 if (post && (!post.sampleBodyJson || !JSON.parse(post.sampleBodyJson).cargoId)) failures.push('POST /api/cargo did not produce a request-body example from RegisterCargoRequest');
 const tracking = catalog.endpoints.find(e => e.projectName === 'ZasTrack.Api' && e.method === 'GET' && e.route === '/api/tracking');
 if (!tracking) failures.push('missing controller route GET /api/tracking with class-level [Route] prefix');
+const fastEndpoint = catalog.endpoints.find(e => e.projectName === 'ZasTrack.Api' && e.framework === 'FastEndpoints' && e.method === 'GET' && e.route === '/api/cargos/{cargoId}');
+if (!fastEndpoint) failures.push('FastEndpoints Configure().Get() route was not discovered');
+if (fastEndpoint && fastEndpoint.requestType !== 'FindCargoRequest') failures.push(`FastEndpoints request DTO was not extracted, got ${fastEndpoint.requestType}`);
+if (fastEndpoint && !fastEndpoint.sourcePath.endsWith('Endpoints/FindCargoEndpoint.cs')) failures.push('FastEndpoints source path does not point to the real endpoint file');
 const savedPost = catalog.requests.find(r => r.sourcePath.endsWith('zas-express-api/tests/cargo.http') && r.method === 'POST');
 if (!savedPost) failures.push('missing POST request parsed from cargo.http');
 if (savedPost && (!post || !savedPost.associatedEndpointIds.includes(post.id))) failures.push('cargo.http POST was not associated with POST /api/cargo');
@@ -38,5 +42,5 @@ if (failures.length) {
   console.error('Discovered HTTP calls:', JSON.stringify(catalog.httpCalls || [], null, 2));
   process.exit(1);
 }
-console.log(`HTTP catalog test passed: ${catalog.endpoints.length} endpoints, ${catalog.requests.length} .http requests, ${(catalog.httpCalls || []).length} outgoing HTTP calls; route/schema/association/trace/environment discovery verified.`);
+console.log(`HTTP catalog test passed: ${catalog.endpoints.length} endpoints, including FastEndpoints; ${catalog.requests.length} .http requests, ${(catalog.httpCalls || []).length} outgoing HTTP calls; route/schema/association/trace/environment discovery verified.`);
 NODE

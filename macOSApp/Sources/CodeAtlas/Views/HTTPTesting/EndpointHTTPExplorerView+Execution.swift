@@ -204,14 +204,13 @@ var responseSection: some View {
         } catch { localError = "No se pudo guardar el archivo .http: \(error.localizedDescription)" }
     }
 
-    func openSourceFile(_ relativePath: String, workspaceRoot: String? = nil) {
-        let root = workspaceRoot.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? repositoryURL
-        guard let root else { return }
-        NSWorkspace.shared.open(root.appendingPathComponent(relativePath))
+    func openSourceFile(_ relativePath: String, line: Int = 1, workspaceRoot: String? = nil) {
+        let root = workspaceRoot ?? repositoryURL?.path
+        SourceNavigator.open(relativePath, root: root, line: line)
     }
 
     func openHTTPFile(_ request: HTTPTestRequest) {
-        openSourceFile(request.sourcePath, workspaceRoot: request.workspaceRoot)
+        openSourceFile(request.sourcePath, line: request.line, workspaceRoot: request.workspaceRoot)
     }
 
     func safeFileName(_ value: String) -> String {

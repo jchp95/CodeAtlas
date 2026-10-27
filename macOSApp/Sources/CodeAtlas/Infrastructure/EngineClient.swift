@@ -16,6 +16,28 @@ enum EngineError: LocalizedError {
     }
 }
 
+struct WorkspaceScanProgress: Sendable {
+    let phase: String
+    let completedRoots: Int
+    let totalRoots: Int
+    let rootName: String
+
+    var fraction: Double {
+        guard totalRoots > 0 else { return 0 }
+        return min(1, max(0, Double(completedRoots) / Double(totalRoots)))
+    }
+
+    var message: String {
+        switch phase {
+        case "preparing": return "Preparando el análisis del workspace…"
+        case "scanning": return "Analizando \(rootName) · repositorio \(min(completedRoots + 1, max(totalRoots, 1))) de \(totalRoots)"
+        case "merging": return "Combinando proyectos, relaciones y flujos…"
+        case "completed": return "Análisis del workspace completado"
+        default: return phase
+        }
+    }
+}
+
 struct EngineClient {
     func scan(repositoryURL: URL) async throws -> ArchitectureSnapshot {
         try await Task.detached(priority: .userInitiated) {
@@ -53,23 +75,33 @@ struct EngineClient {
         }.value
     }
 
-    func scanWorkspace(repositoryURLs: [URL]) async throws -> ArchitectureSnapshot {
+    func scanWorkspace(
+        repositoryURLs: [URL],
+        onProgress: (@Sendable (WorkspaceScanProgress) -> Void)? = nil
+    ) async throws -> ArchitectureSnapshot {
         let roots = repositoryURLs.map { $0.standardizedFileURL }
         guard !roots.isEmpty else { throw EngineError.processFailed("Selecciona al menos una carpeta para analizar.") }
+        onProgress?(WorkspaceScanProgress(phase: "preparing", completedRoots: 0, totalRoots: roots.count, rootName: ""))
         if roots.count == 1, let only = roots.first {
+            onProgress?(WorkspaceScanProgress(phase: "scanning", completedRoots: 0, totalRoots: 1, rootName: only.lastPathComponent))
             var snapshot = try await scan(repositoryURL: only)
             snapshot.workspaceRoots = [only.path]
             snapshot.projects = snapshot.projects.map { project in var copy = project; copy.repositoryRoot = only.path; return copy }
+            onProgress?(WorkspaceScanProgress(phase: "completed", completedRoots: 1, totalRoots: 1, rootName: only.lastPathComponent))
             return snapshot
         }
         var entries: [(root: URL, snapshot: ArchitectureSnapshot)] = []
         // Keep scans sequential to avoid several dotnet restore/build processes competing for the same NuGet cache.
-        for root in roots {
+        for (index, root) in roots.enumerated() {
+            onProgress?(WorkspaceScanProgress(phase: "scanning", completedRoots: index, totalRoots: roots.count, rootName: root.lastPathComponent))
             entries.append((root: root, snapshot: try await scan(repositoryURL: root)))
+            onProgress?(WorkspaceScanProgress(phase: "scanning", completedRoots: index + 1, totalRoots: roots.count, rootName: root.lastPathComponent))
         }
+        onProgress?(WorkspaceScanProgress(phase: "merging", completedRoots: roots.count, totalRoots: roots.count, rootName: ""))
         guard let merged = WorkspaceSnapshotMerger.merge(entries) else {
             throw EngineError.invalidOutput("No se pudo combinar el workspace seleccionado.")
         }
+        onProgress?(WorkspaceScanProgress(phase: "completed", completedRoots: roots.count, totalRoots: roots.count, rootName: ""))
         return merged
     }
 

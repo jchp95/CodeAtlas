@@ -20,6 +20,10 @@ grep -q "TryTraceSourceLocalMethod" "$ENGINE/Features/BusinessFlows/Analysis/Bus
 [[ -f "$APP/Views/Architecture/Diagram/ArchitectureDiagramLayout.swift" ]] || fail "diagram layout component missing"
 [[ -f "$APP/Views/BusinessFlows/Components/BusinessFlowCard.swift" ]] || fail "business-flow card component missing"
 [[ -f "$APP/Views/BusinessFlows/Components/DistributedFlowStepRow.swift" ]] || fail "distributed-flow row component missing"
+[[ -f "$ENGINE/Features/HttpTesting/Catalog/HttpTestingCatalogBuilder.FastEndpoints.cs" ]] || fail "FastEndpoints discovery slice missing"
+[[ -f "$APP/Views/CodeEditor/CodeFileNode.swift" && -f "$APP/Views/CodeEditor/NativeCodeEditor.swift" ]] || fail "native code editor slice missing"
+[[ -f "$APP/Features/Build/BuildConsoleModel.swift" && -f "$APP/Infrastructure/CodeFormatter.swift" ]] || fail "build/formatter application services are missing"
+[[ -f "$APP/Infrastructure/CommandRunner.swift" ]] || fail "external command runner is missing"
 
 while IFS= read -r -d '' source; do
   bytes=$(wc -c < "$source")

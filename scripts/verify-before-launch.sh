@@ -47,6 +47,8 @@ run_step "Snapshot model compatibility tests" "$ROOT/scripts/model-compatibility
 run_step "Runtime binding tests" "$ROOT/scripts/runtime-linker-test.sh"
 run_step "Multi-repository snapshot merge tests" "$ROOT/scripts/workspace-merger-test.sh"
 run_step "UI structure regression tests" "$ROOT/scripts/ui-structure-test.sh"
+run_step "VS Code extension and local bridge tests" "$ROOT/scripts/vscode-extension-test.sh"
+run_step "Code explorer tree regression tests" "$ROOT/scripts/code-file-tree-test.sh"
 run_step "Vertical-slice structure regression tests" "$ROOT/scripts/vertical-slice-structure-test.sh"
 
 # Compile the actual desktop target only after the logic/integration suite is green.

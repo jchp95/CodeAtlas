@@ -161,7 +161,10 @@ func summaryPage(_ snapshot: ArchitectureSnapshot) -> some View {
                 Label("Auto-refresh", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2).foregroundStyle(.secondary)
             }
-            Text("CodeAtlas · 0.13.1")
+            Label(vscodeBridge.isRunning ? "VS Code conectado" : "VS Code desconectado", systemImage: "app.connected.to.app.below.fill")
+                .font(.caption2).foregroundStyle(vscodeBridge.isRunning ? .green : .secondary)
+                .help(vscodeBridge.statusMessage)
+            Text("CodeAtlas · 0.16.0")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
         }
