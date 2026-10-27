@@ -101,3 +101,21 @@ El analizador de flujos utiliza primero los símbolos de Roslyn. Si una referenc
 
 - `Views/Architecture/RelationExplorerView.swift`: filtros de relaciones, evidencia, confianza y enlaces a ubicaciones exactas cuando la fuente se puede resolver sin ambigüedad.
 - `Views/BusinessFlows/Components/FlowPipelineView.swift`: secuencia horizontal accesible a código para los pasos de flujos locales y distribuidos.
+
+
+## Editor nativo (0.18.0)
+
+- `Views/CodeEditor/CodeSyntaxHighlighter.swift`: coloreado sintáctico heurístico, limitado para no bloquear documentos grandes.
+- `Views/CodeEditor/CodeSymbolIndex.swift`: outline por línea y lenguaje con prueba de regresión ejecutable. No sustituye un servidor LSP ni se presenta como un índice semántico completo.
+
+
+## Language services (0.19.0)
+
+- `Features/Code/LanguageServices/LanguageServerLaunchConfiguration.swift`: fixed, shell-free executable definitions by extension.
+- `Features/Code/LanguageServices/LanguageServerModels.swift`: diagnostics, completion items, definitions and explicit server state.
+- `Features/Code/LanguageServices/LSPFrameCodec.swift`: bounded LSP framing.
+- `Features/Code/LanguageServices/LanguageServiceManager.swift`: SwiftUI-facing lifecycle/status adapter, document debounce synchronization and UI operations.
+- `Infrastructure/LanguageServices/LanguageServerClient.swift`: process stdio, JSON-RPC request/response correlation and server notification handling. It refuses server-proposed edits and command execution.
+- `Views/CodeEditor/Components/`: diagnostics and completion picker components; `CodeExplorerView+AI.swift` owns the separate generative-code flow.
+
+The protocol client is tested independently with a local fake server. Real language-server behavior still requires a macOS verification pass for each installed provider.

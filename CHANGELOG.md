@@ -1,3 +1,22 @@
+## 0.19.0 — LSP semántico inicial para el editor
+
+- Añade un cliente Language Server Protocol por stdio con framing `Content-Length`, correlación JSON-RPC, límites de tamaño y timeout por petición.
+- Añade detección opcional, sin instalación automática, de `csharp-ls`, `typescript-language-server`, `sourcekit-lsp`, `pylsp` y `vscode-json-language-server` según la extensión del archivo.
+- Integra `didOpen`/`didChange`/`didClose` y recepción de `publishDiagnostics`, con sincronización completa del documento tras debounce.
+- Añade completado bajo demanda desde el editor, inserción revisable, navegación semántica a definición e inspector de diagnósticos.
+- Maneja solicitudes comunes del servidor (`workspace/configuration`, carpetas, registro y progreso); rechaza `workspace/applyEdit` y ejecución remota de comandos para preservar la aprobación explícita.
+- Añade prueba integrada con un servidor LSP falso en Node: handshake, solicitud del servidor, diagnósticos, completion, definition, sincronización y cierre.
+- La ausencia de un servidor se muestra explícitamente. El outline heurístico y la asistencia generativa previa siguen como mecanismos separados.
+- Limitaciones: no hay sugerencia automática en cada pulsación, code actions, rename/references, semantic tokens ni gestión de instalación/configuración del servidor desde la UI. La compilación integral de macOS aún debe ejecutarse en macOS.
+
+## 0.18.0 — Editor legible y outline de símbolos
+
+- Añade coloreado sintáctico nativo para palabras clave, cadenas, comentarios, números, anotaciones e identificadores frecuentes en el editor AppKit. Los documentos grandes omiten el análisis de colores por encima de 300.000 caracteres para evitar bloquear la escritura.
+- Añade un índice heurístico de símbolos para C#, TypeScript/JavaScript, Swift, Python, Markdown y JSON, calculado en una tarea de fondo y navegable desde el inspector derecho.
+- Incorpora pruebas ejecutables de outline para C#, TypeScript, Markdown y JSON; mantiene explícita la distinción entre outline heurístico y semántica LSP.
+- No sustituye los language servers; la navegación semántica precisa, diagnósticos en tiempo real y autocompletado convencional siguen pendientes para la siguiente fase.
+- Validación en este entorno: test Swift del índice, parseo sintáctico de las fuentes, estructura UI, árbol y vertical slices pasan; la compilación nativa macOS y .NET debe ejecutarse en el Mac.
+
 ## 0.17.0 — Evidencia de relaciones y recorridos navegables
 
 - Sustituye la lista básica de relaciones por un explorador de evidencia con búsqueda, filtros por tipo/confianza, métrica de cobertura de fuente y navegación al archivo/línea cuando existe una coincidencia inequívoca.

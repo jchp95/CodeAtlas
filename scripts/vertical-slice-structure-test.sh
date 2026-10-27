@@ -24,6 +24,9 @@ grep -q "TryTraceSourceLocalMethod" "$ENGINE/Features/BusinessFlows/Analysis/Bus
 [[ -f "$APP/Views/CodeEditor/CodeFileNode.swift" && -f "$APP/Views/CodeEditor/NativeCodeEditor.swift" ]] || fail "native code editor slice missing"
 [[ -f "$APP/Features/Build/BuildConsoleModel.swift" && -f "$APP/Infrastructure/CodeFormatter.swift" ]] || fail "build/formatter application services are missing"
 [[ -f "$APP/Infrastructure/CommandRunner.swift" ]] || fail "external command runner is missing"
+[[ -f "$APP/Infrastructure/LanguageServices/LanguageServerClient.swift" ]] || fail "language server client is missing from infrastructure"
+[[ -f "$APP/Features/Code/LanguageServices/LanguageServiceManager.swift" ]] || fail "language service manager feature is missing"
+[[ -f "$APP/Features/Code/LanguageServices/LSPFrameCodec.swift" ]] || fail "LSP framing codec is missing"
 
 while IFS= read -r -d '' source; do
   bytes=$(wc -c < "$source")

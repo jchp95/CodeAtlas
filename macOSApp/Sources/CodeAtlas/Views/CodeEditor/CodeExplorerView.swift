@@ -10,24 +10,29 @@ struct CodeExplorerView: View {
 
     @State private var treeRoots: [CodeFileNode] = []
     @State private var searchText = ""
-    @State private var selectedFileURL: URL?
+    @State var selectedFileURL: URL?
     @State private var selectedRootPath: String?
-    @State private var editorText = ""
+    @State var editorText = ""
     @State private var savedText = ""
-    @State private var targetLine = 1
+    @State var targetLine = 1
     @State private var isLoadingTree = false
     @State private var isLoadingFile = false
-    @State private var errorMessage: String?
+    @State var errorMessage: String?
     @State private var showInspector = true
     @State private var pendingOpen: PendingSource?
     @State private var showDiscardConfirmation = false
     @State private var isFormatting = false
     @State private var formatStatus: String?
-    @State private var caretOffset = 0
-    @State private var showAISuggestion = false
-    @State private var isGeneratingSuggestion = false
-    @State private var aiPrompt = "Completa el código a partir del cursor respetando los patrones del proyecto."
-    @State private var aiSuggestion = ""
+    @State var caretOffset = 0
+    @State var showAISuggestion = false
+    @State var isGeneratingSuggestion = false
+    @State var aiPrompt = "Completa el código a partir del cursor respetando los patrones del proyecto."
+    @State var aiSuggestion = ""
+    @State private var inspectorTab = "Archivo"
+    @State private var outlineSearch = ""
+    @State private var outlineSymbols: [CodeOutlineSymbol] = []
+    @StateObject private var languageServices = LanguageServiceManager()
+    @State private var showCompletionPicker = false
 
     private struct PendingSource {
         let url: URL
@@ -38,7 +43,7 @@ struct CodeExplorerView: View {
     private var isDirty: Bool { editorText != savedText }
     private var currentFileName: String { selectedFileURL?.lastPathComponent ?? "Sin archivo abierto" }
     private var fileExtension: String { selectedFileURL?.pathExtension.lowercased() ?? "" }
-    private var languageLabel: String {
+    var languageLabel: String {
         switch fileExtension {
         case "cs": return "C#"
         case "swift": return "Swift"
@@ -70,6 +75,19 @@ struct CodeExplorerView: View {
         }
         .background(.clear)
         .task(id: workspaceURLs.map(\.path).joined(separator: "|")) { await refreshTreeAndSelection() }
+        .task(id: editorText) {
+            let source = editorText
+            let ext = fileExtension
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            languageServices.documentChanged(text: source)
+            guard !source.isEmpty else { outlineSymbols = []; return }
+            let indexed = await Task.detached(priority: .utility) {
+                CodeSymbolIndex.scan(source, fileExtension: ext)
+            }.value
+            guard !Task.isCancelled else { return }
+            outlineSymbols = indexed
+        }
         .onChange(of: "\(requestedRootPath ?? "")|\(requestedFilePath ?? "")") { _, _ in
             Task { await loadRequestedSource() }
         }
@@ -77,6 +95,7 @@ struct CodeExplorerView: View {
             targetLine = max(1, newLine)
         }
         .sheet(isPresented: $showAISuggestion) { aiSuggestionSheet }
+        .onDisappear { languageServices.stop() }
         .confirmationDialog("Hay cambios sin guardar", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
             Button("Descartar cambios y abrir", role: .destructive) {
                 guard let pendingOpen else { return }
@@ -183,6 +202,28 @@ struct CodeExplorerView: View {
                 }
                 Spacer(minLength: 8)
                 if isLoadingFile { ProgressView().controlSize(.small) }
+                HStack(spacing: 5) {
+                    Circle().fill(languageServices.status.state == .ready ? Color.green : languageServices.status.state == .failed ? Color.red : Color.secondary).frame(width: 7, height: 7)
+                    Text(languageServices.status.state == .ready ? "LSP activo" : "LSP opcional")
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .help(languageServices.status.message)
+                Button {
+                    Task {
+                        await languageServices.requestCompletions(text: editorText, utf16Offset: caretOffset)
+                        showCompletionPicker = true
+                    }
+                } label: {
+                    if languageServices.isRequestingCompletion { ProgressView().controlSize(.small) }
+                    else { Label("IntelliSense", systemImage: "text.magnifyingglass") }
+                }
+                .buttonStyle(.bordered)
+                .disabled(selectedFileURL == nil || !languageServices.canUseSemanticFeatures || languageServices.isRequestingCompletion)
+                .help(languageServices.status.message)
+                Button { Task { await navigateToDefinition() } } label: { Label("Definición", systemImage: "arrow.turn.down.right") }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedFileURL == nil || !languageServices.canUseSemanticFeatures)
+                    .help("Ir a la definición del símbolo bajo el cursor con el servidor de lenguaje")
                 Button { showAISuggestion = true } label: { Label("Completar con IA", systemImage: "sparkles") }
                     .buttonStyle(.bordered)
                     .disabled(selectedFileURL == nil || isGeneratingSuggestion)
@@ -242,10 +283,19 @@ struct CodeExplorerView: View {
             .padding(.vertical, 7)
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.92))
+        .sheet(isPresented: $showCompletionPicker) {
+            LanguageCompletionPickerView(
+                status: languageServices.status,
+                items: languageServices.completionItems,
+                isLoading: languageServices.isRequestingCompletion,
+                message: languageServices.lastMessage,
+                onSelect: insertLanguageCompletion
+            )
+        }
     }
 
     private var inspectorPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Inspector", systemImage: "sidebar.right").font(.system(.headline, design: .rounded))
                 Spacer()
@@ -253,37 +303,70 @@ struct CodeExplorerView: View {
                     .buttonStyle(.plain).foregroundStyle(.secondary)
             }
             Divider()
-            if let selectedFileURL {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("ARCHIVO").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-                    Text(selectedFileURL.lastPathComponent).font(.callout.weight(.semibold)).textSelection(.enabled)
-                    Text(selectedFileURL.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-                inspectorValue("Lenguaje", languageLabel)
-                inspectorValue("Extensión", fileExtension.isEmpty ? "(sin extensión)" : ".\(fileExtension)")
-                inspectorValue("Ubicación", selectedRootPath ?? "Workspace")
-                inspectorValue("Línea objetivo", "\(targetLine)")
-                if let attributes = try? FileManager.default.attributesOfItem(atPath: selectedFileURL.path) {
-                    let bytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-                    inspectorValue("Tamaño", ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
-                    if let modified = attributes[.modificationDate] as? Date {
-                        inspectorValue("Modificado", modified.formatted(date: .abbreviated, time: .shortened))
-                    }
-                }
-                Divider()
-                Text("ACCIONES").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-                Button { revealCurrentFile() } label: { Label("Mostrar en Finder", systemImage: "finder") }
-                    .buttonStyle(.bordered).frame(maxWidth: .infinity, alignment: .leading)
-                Button { copyCurrentPath() } label: { Label("Copiar ruta", systemImage: "doc.on.doc") }
-                    .buttonStyle(.bordered).frame(maxWidth: .infinity, alignment: .leading)
-            } else {
+            if selectedFileURL == nil {
                 ContentUnavailableView("Sin selección", systemImage: "info.circle",
-                                       description: Text("Selecciona un archivo para ver sus detalles."))
+                                       description: Text("Selecciona un archivo para ver sus detalles y estructura."))
+            } else {
+                Picker("Inspector", selection: $inspectorTab) {
+                    Text("Archivo").tag("Archivo")
+                    Text("Símbolos · \(outlineSymbols.count)").tag("Símbolos")
+                    Text("Problemas · \(languageServices.diagnostics.count)").tag("Diagnósticos")
+                }
+                .pickerStyle(.segmented)
+
+                if inspectorTab == "Archivo", let selectedFileURL {
+                    fileInspectorContent(selectedFileURL)
+                } else if inspectorTab == "Símbolos" {
+                    outlineInspectorContent
+                } else {
+                    languageDiagnosticsContent
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(13)
         .background(.ultraThinMaterial)
+    }
+
+    private func fileInspectorContent(_ selectedFileURL: URL) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("ARCHIVO").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                Text(selectedFileURL.lastPathComponent).font(.callout.weight(.semibold)).textSelection(.enabled)
+                Text(selectedFileURL.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            inspectorValue("Lenguaje", languageLabel)
+            inspectorValue("Extensión", fileExtension.isEmpty ? "(sin extensión)" : ".\(fileExtension)")
+            inspectorValue("Ubicación", selectedRootPath ?? "Workspace")
+            inspectorValue("Línea objetivo", "\(targetLine)")
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: selectedFileURL.path) {
+                let bytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                inspectorValue("Tamaño", ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                if let modified = attributes[.modificationDate] as? Date {
+                    inspectorValue("Modificado", modified.formatted(date: .abbreviated, time: .shortened))
+                }
+            }
+            Divider()
+            Text("ACCIONES").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+            Button { revealCurrentFile() } label: { Label("Mostrar en Finder", systemImage: "finder") }
+                .buttonStyle(.bordered).frame(maxWidth: .infinity, alignment: .leading)
+            Button { copyCurrentPath() } label: { Label("Copiar ruta", systemImage: "doc.on.doc") }
+                .buttonStyle(.bordered).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var outlineInspectorContent: some View {
+        CodeOutlineInspectorView(symbols: outlineSymbols, searchText: $outlineSearch, targetLine: targetLine) { symbol in
+            targetLine = symbol.line
+            caretOffset = lineOffset(in: editorText, line: symbol.line)
+        }
+    }
+
+    private var languageDiagnosticsContent: some View {
+        LanguageDiagnosticsInspectorView(status: languageServices.status, diagnostics: languageServices.diagnostics) { diagnostic in
+            targetLine = diagnostic.line
+            caretOffset = lineOffset(in: editorText, line: diagnostic.line)
+        }
     }
 
     private func inspectorValue(_ label: String, _ value: String) -> some View {
@@ -372,6 +455,11 @@ struct CodeExplorerView: View {
             selectedRootPath = rootPath
             editorText = content
             savedText = content
+            languageServices.openDocument(
+                url: url,
+                rootURL: URL(fileURLWithPath: rootPath ?? url.deletingLastPathComponent().path, isDirectory: true),
+                text: content
+            )
             targetLine = max(1, line)
             caretOffset = lineOffset(in: content, line: targetLine)
             errorMessage = nil
@@ -390,80 +478,15 @@ struct CodeExplorerView: View {
         requestedFilePath = path
     }
 
-    private var aiSuggestionSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Autocompletado con IA", systemImage: "sparkles").font(.title3.bold())
-                Spacer()
-                Text(aiService.provider.rawValue).font(.caption).foregroundStyle(.secondary)
-            }
-            Text("La sugerencia se insertará en el cursor solo cuando pulses Insertar. El archivo no se modifica automáticamente.")
-                .font(.callout).foregroundStyle(.secondary)
-            TextField("Qué debe completar el modelo", text: $aiPrompt, axis: .vertical)
-                .textFieldStyle(.roundedBorder).lineLimit(2...4)
-            HStack {
-                Button { Task { await generateAICodeSuggestion() } } label: {
-                    if isGeneratingSuggestion { ProgressView().controlSize(.small) }
-                    else { Label("Generar sugerencia", systemImage: "sparkles") }
-                }.buttonStyle(.borderedProminent).disabled(isGeneratingSuggestion || selectedFileURL == nil)
-                Spacer()
-                Button("Cerrar") { showAISuggestion = false }.keyboardShortcut(.cancelAction)
-            }
-            if !aiSuggestion.isEmpty {
-                Divider()
-                Text("Propuesta de inserción").font(.headline)
-                TextEditor(text: $aiSuggestion).font(.system(size: 11, design: .monospaced))
-                    .frame(minHeight: 180).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.12)))
-                HStack {
-                    Button("Copiar sugerencia") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(aiSuggestion, forType: .string)
-                    }.buttonStyle(.bordered)
-                    Spacer()
-                    Button("Insertar en el cursor") { insertAISuggestion() }
-                        .buttonStyle(.borderedProminent).disabled(aiSuggestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+    private func navigateToDefinition() async {
+        guard selectedFileURL != nil else { return }
+        guard let location = await languageServices.goToDefinition(text: editorText, utf16Offset: caretOffset) else {
+            if let message = languageServices.lastMessage { errorMessage = message }
+            return
         }
-        .padding(18).frame(minWidth: 670, minHeight: 430)
-    }
-
-    private func generateAICodeSuggestion() async {
-        guard let selectedFileURL else { return }
-        isGeneratingSuggestion = true
-        aiSuggestion = ""
-        defer { isGeneratingSuggestion = false }
-        let source = editorText as NSString
-        let offset = min(max(0, caretOffset), source.length)
-        let contextStart = max(0, offset - 7000)
-        let contextEnd = min(source.length, offset + 7000)
-        let prefix = source.substring(with: NSRange(location: contextStart, length: offset - contextStart))
-        let suffix = source.substring(with: NSRange(location: offset, length: contextEnd - offset))
-        let prompt = """
-        Actúa como autocompletado de código para CodeAtlas. Devuelve únicamente el texto que debe insertarse en el punto marcado por <|CURSOR|>. No repitas el código que ya existe a la izquierda o a la derecha, no uses bloques Markdown y no añadas explicación. Sigue el estilo, los tipos y los patrones del archivo. Si faltan datos necesarios, devuelve una sugerencia mínima y deja comentarios explícitos en vez de inventar APIs.
-
-        Archivo: \(selectedFileURL.lastPathComponent)
-        Lenguaje detectado: \(languageLabel)
-        Instrucción adicional: \(aiPrompt)
-
-        Código alrededor del cursor:
-        \(prefix)<|CURSOR|>\(suffix)
-        """
-        do {
-            let answer = try await aiService.ask(question: prompt, architectureContext: "")
-            aiSuggestion = Self.stripCodeFence(answer).trimmingCharacters(in: .newlines)
-            if aiSuggestion.isEmpty { errorMessage = "El modelo no devolvió una sugerencia de código." }
-        } catch { errorMessage = "No se pudo generar la sugerencia: \(error.localizedDescription)" }
-    }
-
-    private func insertAISuggestion() {
-        let source = editorText as NSString
-        let offset = min(max(0, caretOffset), source.length)
-        let addition = aiSuggestion
-        editorText = source.replacingCharacters(in: NSRange(location: offset, length: 0), with: addition)
-        caretOffset = offset + (addition as NSString).length
-        targetLine = lineNumber(in: editorText, offset: caretOffset)
-        showAISuggestion = false
+        let root = workspaceURLs.first(where: { location.url.standardizedFileURL.path.hasPrefix($0.standardizedFileURL.path + "/") })
+            ?? URL(fileURLWithPath: selectedRootPath ?? location.url.deletingLastPathComponent().path, isDirectory: true)
+        openResolvedSource(location.url, rootPath: root.path, line: location.line)
     }
 
     private func lineOffset(in source: String, line: Int) -> Int {
@@ -473,18 +496,9 @@ struct CodeExplorerView: View {
         return (0..<(bounded - 1)).reduce(0) { $0 + (lines[$1] as NSString).length + 1 }
     }
 
-    private func lineNumber(in source: String, offset: Int) -> Int {
+    func lineNumber(in source: String, offset: Int) -> Int {
         let bounded = min(max(0, offset), (source as NSString).length)
         return max(1, ((source as NSString).substring(to: bounded).filter { $0 == "\n" }.count) + 1)
-    }
-
-    private static func stripCodeFence(_ source: String) -> String {
-        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("```") else { return trimmed }
-        var lines = trimmed.components(separatedBy: .newlines)
-        if !lines.isEmpty { lines.removeFirst() }
-        if lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("```") == true { lines.removeLast() }
-        return lines.joined(separator: "\n")
     }
 
     private func saveCurrentFile() {
@@ -492,6 +506,7 @@ struct CodeExplorerView: View {
         do {
             try editorText.write(to: selectedFileURL, atomically: true, encoding: .utf8)
             savedText = editorText
+            languageServices.documentSaved()
         } catch {
             errorMessage = "No se pudo guardar el archivo: \(error.localizedDescription)"
         }

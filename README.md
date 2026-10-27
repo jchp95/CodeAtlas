@@ -1,6 +1,16 @@
-# CodeAtlas + StackPilot — MVP 0.17.0
+# CodeAtlas + StackPilot — MVP 0.19.0
 
 macOS desktop developer control center that combines a block-based architecture map, Git snapshot comparisons, local microservice operations, HTTP endpoint testing, and an optional AI engineering assistant.
+
+## What's new in 0.19.0
+
+- Adds an LSP client over stdio with JSON-RPC request correlation, Content-Length framing, request timeouts and payload bounds.
+- Adds optional C#, TypeScript/JavaScript, Swift, Python and JSON server detection without automatic installation.
+- Shows real language-server diagnostics in the right inspector; adds an explicit IntelliSense action and semantic go-to-definition where the configured server supports them.
+- Synchronizes document changes after a short debounce, sends didSave, and keeps the heuristic outline separate from LSP semantics.
+- Rejects workspace edits and server-requested commands from the language server; all changes remain subject to explicit user approval.
+- Includes an integration test with a fake LSP server, covering the stdio protocol instead of only checking for source files.
+- Run `./scripts/language-server-test.sh` to validate the protocol and client locally.
 
 ## What's new in 0.15.0
 
@@ -10,7 +20,7 @@ macOS desktop developer control center that combines a block-based architecture 
 - Adds extension-aware formatting integrations for C#, Swift, JS/TS, JSON, Markdown, YAML, HTML/CSS and shell. Formatters are invoked only when the user asks and external package installs are disabled.
 - Adds provider-backed AI code completion at the caret. Suggestions are reviewed before insertion and do not write a source file automatically.
 - Keeps the code explorer, source-linked analysis and FastEndpoints detection introduced in 0.14.0.
-- This is still an incremental native IDE. A full LSP-backed editing experience, complete terminal/VS Code bridge, and macOS end-to-end validation remain planned work.
+- The native editor now supports on-demand LSP completion, source diagnostics and definition navigation for installed servers; automatic inline completion, code actions, rename and a full terminal remain planned work.
 
 ## What's new in 0.14.0
 
@@ -19,7 +29,7 @@ macOS desktop developer control center that combines a block-based architecture 
 - Detects FastEndpoints route declarations and improves nested Minimal API group-prefix resolution and controller methods with multiple HTTP verb attributes.
 - Exposes per-repository workspace-analysis progress without performing the .NET scan on the SwiftUI main thread.
 - Adds a runnable regression test for workspace file-tree filtering and places it in the startup gate.
-- This is an incremental IDE foundation, not yet a complete LSP-powered editor. Native full build and .NET integration suite must be verified on macOS with .NET 10 / Xcode.
+- This is an incremental IDE foundation; the LSP-backed editor was added in 0.19.0. Native full build and .NET integration suite must be verified on macOS with .NET 10 / Xcode.
 
 ## What's new in 0.13.1
 

@@ -79,3 +79,11 @@ Implemented: searchable business flow cards, static C# endpoint-to-method trace,
 6. **Production readiness:** real macOS integration tests, robust cancellation/timeouts, logs and privacy review, signed/notarized app packaging, migration tests for settings/snapshots, and clear diagnostics when optional tools/SDKs are absent.
 
 A goal of becoming an IDE does not mean replacing Rider, Cursor or VS Code immediately. The intended first step is an architecture-aware control center that can launch or link out to the existing editor and later add file/console/extension capabilities without duplicating its compiler/debugger responsibilities.
+
+
+## 0.19.0 scope: Language services
+
+- Implemented: LSP JSON-RPC stdio client, bounded Content-Length parser, request timeouts, text document synchronization, diagnostics, on-demand completion and go-to-definition.
+- Supported launch candidates: C#, TypeScript/JavaScript, Swift, Python and JSON. Providers must already be installed and reachable on `PATH`.
+- Server-originated file edits and command requests are not auto-applied.
+- Remaining: inline completion triggers, references/rename/code actions, formatter/code-action integrations, UI configuration for executable paths, and provider-by-provider real macOS integration tests.

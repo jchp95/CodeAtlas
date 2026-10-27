@@ -103,3 +103,18 @@ Documentación del esquema y CLI: [`STACKPILOT.md`](STACKPILOT.md).
 - StackPilot es local; no despliega a producción ni consulta la topología remota real de RabbitMQ.
 - La configuración inicial es JSON editada con una aplicación externa; el editor de servicios dentro de CodeAtlas está pendiente.
 - El motor y la app nativa aún deben compilarse y probarse en el Mac con sus SDK instalados.
+
+
+## Servicios de lenguaje y semántica LSP
+
+CodeAtlas detecta servidores existentes en `PATH`; no los instala ni ejecuta gestores de paquetes de forma automática. Para C# se busca `csharp-ls`, para TypeScript/JavaScript `typescript-language-server --stdio`, para Swift `sourcekit-lsp`, para Python `pylsp` y para JSON `vscode-json-language-server --stdio`. Consulta [`LANGUAGE_SERVICES.md`](LANGUAGE_SERVICES.md) para el mapa completo de funciones y limitaciones.
+
+En **Código**, abre un archivo compatible. El indicador `LSP activo` confirma que el proceso inicializó; después puedes usar **IntelliSense**, **Definición** y el inspector **Problemas**. Cuando el servidor no esté instalado, la interfaz muestra el ejecutable que falta y mantiene disponibles el editor, el resaltado y el outline heurístico.
+
+Para validar el protocolo independientemente del proveedor instalado:
+
+```bash
+./scripts/language-server-test.sh
+```
+
+Esta prueba inicia un servidor simulado sobre `stdin`/`stdout` y verifica el handshake, diagnósticos, completion, definition y sincronización. No sustituye la prueba de un servidor real en el Mac.

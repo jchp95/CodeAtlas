@@ -301,8 +301,7 @@ struct ContentView: View {
             Button { withAnimation(.snappy(duration: 0.2)) { showBuildConsole.toggle() } } label: {
                 Label("Build", systemImage: "hammer")
             }
-            .buttonStyle(.bordered)
-            .tint(showBuildConsole ? .accentColor : nil)
+            .buttonStyle(showBuildConsole ? .borderedProminent : .bordered)
             .controlSize(.regular)
             .help("Abrir consola de compilación y pruebas · ⌘⇧B")
 

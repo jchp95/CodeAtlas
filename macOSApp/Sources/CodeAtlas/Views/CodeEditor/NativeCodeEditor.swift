@@ -7,7 +7,7 @@ struct NativeCodeEditor: NSViewRepresentable {
     var targetLine: Int
     var language: String
 
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text, caretOffset: $caretOffset) }
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text, caretOffset: $caretOffset, language: language) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -36,9 +36,10 @@ struct NativeCodeEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = false
         textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.maxSize = NSSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         textView.delegate = context.coordinator
         textView.string = text
+        CodeSyntaxHighlighter.apply(to: textView, language: language)
         textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
 
         let ruler = CodeLineNumberRulerView(textView: textView, scrollView: scrollView)
@@ -59,7 +60,12 @@ struct NativeCodeEditor: NSViewRepresentable {
             let selection = textView.selectedRange()
             textView.string = text
             textView.setSelectedRange(NSRange(location: min(selection.location, (text as NSString).length), length: 0))
+            context.coordinator.applySyntaxHighlighting()
             context.coordinator.ruler?.needsDisplay = true
+        }
+        if context.coordinator.currentLanguage != language {
+            context.coordinator.currentLanguage = language
+            context.coordinator.applySyntaxHighlighting()
         }
         if context.coordinator.lastTargetLine != targetLine {
             context.coordinator.lastTargetLine = targetLine
@@ -86,15 +92,25 @@ struct NativeCodeEditor: NSViewRepresentable {
         @Binding private var text: String
         @Binding private var caretOffset: Int
         weak var textView: NSTextView?
-        fileprivate weak var ruler: CodeLineNumberRulerView?
+        weak var ruler: CodeLineNumberRulerView?
         var lastTargetLine: Int
         var lastCaretOffset: Int
+        var currentLanguage: String
+        private var isApplyingHighlight = false
 
-        init(text: Binding<String>, caretOffset: Binding<Int>) {
+        init(text: Binding<String>, caretOffset: Binding<Int>, language: String) {
             _text = text
             _caretOffset = caretOffset
+            currentLanguage = language
             lastTargetLine = 1
             lastCaretOffset = caretOffset.wrappedValue
+        }
+
+        func applySyntaxHighlighting() {
+            guard !isApplyingHighlight, let textView else { return }
+            isApplyingHighlight = true
+            CodeSyntaxHighlighter.apply(to: textView, language: currentLanguage)
+            isApplyingHighlight = false
         }
 
         func textDidChange(_ notification: Notification) {
@@ -102,6 +118,7 @@ struct NativeCodeEditor: NSViewRepresentable {
             text = textView.string
             caretOffset = textView.selectedRange().location
             lastCaretOffset = caretOffset
+            applySyntaxHighlighting()
             ruler?.needsDisplay = true
         }
 
@@ -113,7 +130,7 @@ struct NativeCodeEditor: NSViewRepresentable {
     }
 }
 
-fileprivate final class CodeLineNumberRulerView: NSRulerView {
+private final class CodeLineNumberRulerView: NSRulerView {
     weak var codeTextView: NSTextView?
 
     init(textView: NSTextView, scrollView: NSScrollView) {
@@ -148,7 +165,7 @@ fileprivate final class CodeLineNumberRulerView: NSRulerView {
             let label = String(currentLine) as NSString
             let size = label.size(withAttributes: attributes)
             let y = lineRect.minY + textView.textContainerOrigin.y + textView.textContainerInset.height
-            label.draw(at: NSPoint(x: self.bounds.width - size.width - 8, y: y), withAttributes: attributes)
+            label.draw(at: NSPoint(x: bounds.width - size.width - 8, y: y), withAttributes: attributes)
         }
     }
 }
