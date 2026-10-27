@@ -1,0 +1,3 @@
+### Tracking health
+GET {{serviceBaseUrl}}/api/tracking
+Accept: application/json

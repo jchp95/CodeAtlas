@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@fixture/tracking-client": ["packages/tracking-client/src/index.ts"]
+    },
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["packages/**/*.ts"]
+}

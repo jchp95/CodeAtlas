@@ -1,0 +1,9 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"

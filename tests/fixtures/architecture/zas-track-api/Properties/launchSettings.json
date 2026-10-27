@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ZasTrack.Api": {
+      "commandName": "Project",
+      "applicationUrl": "https://localhost:7182;http://localhost:5182"
+    }
+  }
+}

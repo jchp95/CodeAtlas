@@ -1,0 +1,15 @@
+@baseUrl = http://localhost:5267
+
+### Register cargo
+# @name registerCargo
+POST {{baseUrl}}/api/cargo
+Content-Type: application/json
+Accept: application/json
+
+{
+  "cargoId": "CARGO-TEST-001"
+}
+
+### Health check
+GET {{baseUrl}}/api/health
+Accept: application/json

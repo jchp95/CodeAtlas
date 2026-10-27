@@ -1,0 +1,30 @@
+sealed record ChangedProject(string Id, string Name, string[] ChangedFields);
+sealed record ArchitectureDelta(
+    string PreviousCommit,
+    string CurrentCommit,
+    string PreviousBranch,
+    string CurrentBranch,
+    ProjectNode[] AddedProjects,
+    ProjectNode[] RemovedProjects,
+    ChangedProject[] ChangedProjects,
+    ArchitectureRelation[] AddedRelations,
+    ArchitectureRelation[] RemovedRelations,
+    string[] Summary,
+    FlowChange[]? FlowChanges = null,
+    DistributedFlowChange[]? DistributedFlowChanges = null);
+sealed record ArchitectureSnapshot(
+    string RepositoryPath,
+    string RepositoryName,
+    string Branch,
+    string HeadCommit,
+    string ScannedAt,
+    ProjectNode[] Projects,
+    ArchitectureRelation[] Relations,
+    GitChange[] Changes,
+    string[] Warnings,
+    ScanSummary Summary,
+    ArchitectureDelta? Delta,
+    BusinessFlow[]? BusinessFlows = null,
+    DistributedFlow[]? DistributedFlows = null,
+    GitRepositoryState[]? GitRepositories = null,
+    string[]? WorkspaceRoots = null);
