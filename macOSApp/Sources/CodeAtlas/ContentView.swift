@@ -8,7 +8,10 @@ struct ContentView: View {
     @State var repositoryURLs: [URL] = []
     @StateObject var aiService = AIAssistantService()
     @State var isScanning = false
+    @State var isCancellingScan = false
     @State var scanProgress: WorkspaceScanProgress?
+    @State var activeScanID: UUID?
+    @State var workspaceScanTask: Task<Void, Never>?
     @State var errorMessage: String?
     @State var selectedSection = "Resumen"
     @State var architectureMenuExpanded = true
@@ -39,11 +42,18 @@ struct ContentView: View {
                     .frame(height: 1)
                 if isScanning, let scanProgress {
                     HStack(spacing: 12) {
-                        ProgressView(value: scanProgress.fraction)
-                            .frame(maxWidth: 170)
+                        if scanProgress.phase == "scanning" && scanProgress.totalRoots == 1 {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            ProgressView(value: scanProgress.fraction).frame(maxWidth: 170)
+                        }
                         Text(scanProgress.message)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 0)
+                        Button(isCancellingScan ? "Cancelando…" : "Cancelar") { cancelWorkspaceScan() }
+                            .buttonStyle(.borderless)
+                            .font(.caption.weight(.medium))
+                            .disabled(isCancellingScan)
                     }
                     .padding(.horizontal, 26)
                     .padding(.vertical, 8)
@@ -116,7 +126,7 @@ struct ContentView: View {
             lastFingerprint = nil
             selectedProjectID = nil
             selectedSection = "Resumen"
-            Task { await rescan() }
+            startRescan()
         }
     }
 
@@ -313,7 +323,7 @@ struct ContentView: View {
                 .labelsHidden()
                 .help("Actualizar automáticamente al detectar cambios en los repositorios")
 
-                Button { Task { await rescan() } } label: {
+                Button { startRescan() } label: {
                     Label("Actualizar", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderedProminent)

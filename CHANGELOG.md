@@ -1,3 +1,47 @@
+## Sin publicar — Fases 1–2 del IDE de ingeniería basada en evidencias
+
+- Auditoría del IDE (`docs/IDE_AUDIT.md`): matriz de capacidades con estado real, brechas, riesgos, arquitectura objetivo y plan por fases con criterios de aceptación.
+- Nuevo modelo común de hallazgos (`Features/Findings`): id estable independiente de la línea, niveles de validación (`staticProven`, `staticRisk`, `hypothesis`, … `fixValidated`), evidencias, limitaciones, reproducción, historial y fusión sin duplicados.
+- Nuevo motor de análisis Roslyn (`analyze`, `analysis-rules`, `fix`): 11 reglas semánticas (bloqueo sobre async, `async void`, cancelación no propagada, excepciones tragadas, `throw ex`, recursos sin liberar, llamadas remotas en bucles, enumeración múltiple, complejidad ciclomática, longitud, errores de sintaxis), configuración por `codeatlas.analysis.json`, caché por proyecto, paralelismo por documento, cancelación por señal y telemetría por regla.
+- Correcciones automáticas con diff previo, hash base y rechazo si el archivo cambió (`ATL1003`, `ATL1005`).
+- Corrige la compilación compartida del escaneo: ahora incluye los `ImplicitUsings` del SDK y los `<Using>` del `.csproj`; antes `Task`, `List<T>` o `HttpClient` quedaban sin resolver en proyectos modernos sin `obj/`.
+- `JsonDefaults` serializa enums como cadenas camelCase.
+- Validación: `scripts/code-analysis-test.sh` (añadido a `verify-before-launch.sh`). La compilación SwiftUI no pudo verificarse: el manifiesto `Package.swift` no compila con las Command Line Tools instaladas.
+
+## 0.23.0 — Salida de build/test segura para UTF-8
+
+- Corrige la pérdida ocasional de caracteres multibyte cuando stdout/stderr entrega un carácter UTF-8 dividido entre dos lecturas del pipe.
+- Añade `UTF8StreamDecoder`, que retiene secuencias incompletas hasta recibir el resto y vacía los bytes pendientes al cerrar el stream.
+- Añade una regresión que divide texto acentuado y emojis en límites de bytes arbitrarios.
+- Validación: prueba portable del decodificador y suites Swift/Node existentes; la compilación completa de SwiftUI/.NET sigue requiriendo macOS con los SDK necesarios.
+
+## 0.22.0 — Diagnóstico completo del catálogo HTTP
+
+- La vista de Endpoints HTTP mostraba únicamente la primera advertencia del catálogo. Ahora expone todas las notas y advertencias, con contador, desplazamiento, texto seleccionable y señales visuales de severidad.
+- Facilita detectar prefijos dinámicos no resueltos, catálogos sin archivos `.http`/`.rest`, peticiones sin asociación, llamadas salientes ambiguas y errores al analizar fuentes.
+- Sincroniza la versión visible de la aplicación y la identidad del cliente LSP con `0.22.0`.
+- No convierte rutas dinámicas en endpoints supuestamente completos; mantiene el comportamiento conservador del analizador.
+- Validación portátil: suites Swift/Node y análisis sintáctico de fuentes. La compilación completa SwiftUI/.NET requiere macOS con los SDK correspondientes.
+
+## 0.21.0 — Resolución de rutas HTTP más precisa
+
+- Resuelve constantes `const string` de rutas a través de archivos del proyecto cuando el nombre es inequívoco, incluyendo atributos de controllers, Minimal APIs y FastEndpoints.
+- Resuelve grupos `MapGroup` anidados de forma independiente al orden de declaración y aplica el prefijo también a `MapMethods`.
+- Evita publicar rutas parciales cuando el prefijo de un grupo es dinámico o no se puede resolver; agrega advertencias con archivo y línea.
+- Extrae el descubrimiento Next.js y la resolución de rutas a archivos dedicados para mantener módulos pequeños.
+- Añade regresiones para constantes en otro archivo, grupos anidados, `MapMethods` y prefijos dinámicos; endurece el límite de 250 líneas en los módulos del catálogo HTTP.
+- Validación disponible en este runner: pruebas Swift/Node de estructura, editor, LSP, procesos, cancelación, resolución del motor y puente VS Code pasan. No hay SDK .NET instalado, por lo que la suite `http-catalog-test.sh` y la compilación del motor deben confirmarse en macOS.
+
+## 0.20.0 — Cancelación y ejecución eficiente de procesos
+
+- Centraliza la ejecución de procesos en un servicio con drenaje concurrente de stdout/stderr, límites de salida, estado de terminación y cancelación efectiva.
+- Reutiliza el ensamblado compilado `CodeAtlas.Engine.dll` tras el build obligatorio de arranque, evitando arrancar `dotnet run` para cada operación del IDE.
+- Añade cancelación visible de los análisis del workspace, espera de finalización del análisis anterior antes de iniciar otro y comprobaciones de cancelación entre repositorios.
+- Desplaza la decodificación de snapshots, combinación multi-repo y hash de archivos modificados fuera del hilo principal.
+- Actualiza fingerprints Git para rutas con espacios/nuevas líneas mediante salida NUL y evita materializar un diff binario gigantesco.
+- Añade pruebas de proceso, límites de salida, cancelación y selección del ensamblado .NET.
+- Validación del runner: pruebas portables de proceso, resolver, LSP, UI y vertical slices. La compilación integral macOS/.NET debe ejecutarse en el Mac.
+
 ## 0.19.0 — LSP semántico inicial para el editor
 
 - Añade un cliente Language Server Protocol por stdio con framing `Content-Length`, correlación JSON-RPC, límites de tamaño y timeout por petición.

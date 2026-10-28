@@ -68,10 +68,40 @@ var sidebar: some View {
                 .background(.ultraThinMaterial)
                 if !catalog.warnings.isEmpty {
                     Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Label("Notas del catálogo", systemImage: "info.circle").font(.caption.bold())
-                        Text(catalog.warnings.first ?? "").font(.caption2).foregroundStyle(.secondary).lineLimit(3)
-                    }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 6) {
+                            Label("Diagnóstico del catálogo", systemImage: "exclamationmark.bubble")
+                                .font(.caption.bold())
+                            Spacer(minLength: 4)
+                            Text("\(catalog.warnings.count)")
+                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(Array(catalog.warnings.enumerated()), id: \.offset) { _, warning in
+                                    HStack(alignment: .top, spacing: 7) {
+                                        Image(systemName: warningIcon(for: warning))
+                                            .font(.caption2)
+                                            .foregroundStyle(warningColor(for: warning))
+                                            .frame(width: 12)
+                                            .padding(.top, 1)
+                                        Text(warning)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 150)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Diagnóstico del catálogo HTTP")
                 }
             } else {
                 ContentUnavailableView("Selecciona un workspace", systemImage: "folder.badge.questionmark",
@@ -94,6 +124,21 @@ var sidebar: some View {
                     description: Text("Los archivos .http asociados aparecen primero. También puedes generar una petición a partir del endpoint detectado."))
             }
         }
+    }
+
+    func warningIcon(for warning: String) -> String {
+        let value = warning.lowercased()
+        if value.contains("no se pudo") || value.contains("error") || value.contains("falló") { return "xmark.octagon.fill" }
+        if value.contains("dinámic") || value.contains("no se detectaron") || value.contains("no se encontraron")
+            || value.contains("no se pudieron") || value.contains("ambigu") { return "exclamationmark.triangle.fill" }
+        return "info.circle.fill"
+    }
+
+    func warningColor(for warning: String) -> Color {
+        let icon = warningIcon(for: warning)
+        if icon == "xmark.octagon.fill" { return .red }
+        if icon == "exclamationmark.triangle.fill" { return .orange }
+        return .secondary
     }
 
     func requestRow(_ request: HTTPTestRequest) -> some View {

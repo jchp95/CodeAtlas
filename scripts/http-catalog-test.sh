@@ -18,6 +18,12 @@ const tracking = catalog.endpoints.find(e => e.projectName === 'ZasTrack.Api' &&
 if (!tracking) failures.push('missing controller route GET /api/tracking with class-level [Route] prefix');
 const fastEndpoint = catalog.endpoints.find(e => e.projectName === 'ZasTrack.Api' && e.framework === 'FastEndpoints' && e.method === 'GET' && e.route === '/api/cargos/{cargoId}');
 if (!fastEndpoint) failures.push('FastEndpoints Configure().Get() route was not discovered');
+const groupedGet = catalog.endpoints.find(e => e.projectName === 'ZasExpress.Api' && e.method === 'GET' && e.route === '/api/v1/cargo/{cargoId}');
+if (!groupedGet) failures.push('nested MapGroup route with a cross-file constant was not resolved to /api/v1/cargo/{cargoId}');
+const groupedPatch = catalog.endpoints.find(e => e.projectName === 'ZasExpress.Api' && e.method === 'PATCH' && e.route === '/api/v1/cargo/status');
+if (!groupedPatch) failures.push('MapMethods route inside a nested group was not prefixed correctly');
+if (catalog.endpoints.some(e => e.route.includes('not-a-real-static-route'))) failures.push('dynamic MapGroup prefix was published as a misleading partial route');
+if (!(catalog.warnings || []).some(w => w.includes('prefijo MapGroup') && w.includes('dinámico'))) failures.push('unresolved dynamic MapGroup prefix did not produce a diagnostic warning');
 if (fastEndpoint && fastEndpoint.requestType !== 'FindCargoRequest') failures.push(`FastEndpoints request DTO was not extracted, got ${fastEndpoint.requestType}`);
 if (fastEndpoint && !fastEndpoint.sourcePath.endsWith('Endpoints/FindCargoEndpoint.cs')) failures.push('FastEndpoints source path does not point to the real endpoint file');
 const savedPost = catalog.requests.find(r => r.sourcePath.endsWith('zas-express-api/tests/cargo.http') && r.method === 'POST');

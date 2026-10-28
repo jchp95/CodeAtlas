@@ -53,6 +53,12 @@ La configuración de los directorios del workspace proporciona valores por defec
 
 Revisa `.gitignore` y no commits credenciales reales ni tokens. CodeAtlas no copia las variables al snapshot, pero no cambia el estado de Git de tus archivos de entorno.
 
+## Resolución de rutas y límites
+
+El detector .NET reconoce controladores con atributos HTTP, Minimal APIs (`MapGet`, `MapPost`, `MapMethods`, etc.), grupos `MapGroup` declarados en variables y endpoints FastEndpoints (`Endpoint<TRequest,TResponse>` y las formas comunes `Get`/`Post`/`Route`/`Routes`). Las rutas constantes `const string` se resuelven a través de archivos del mismo proyecto cuando el nombre es inequívoco, y los grupos anidados se combinan desde el grupo raíz hasta la ruta final.
+
+Si el prefijo de un grupo es dinámico o no se puede resolver, el catálogo no publica una ruta parcial como si fuera completa: omite ese endpoint y añade una advertencia con el archivo y la línea. Esto evita asociaciones `.http` engañosas. Las convenciones basadas en source generators, convenciones de routing personalizadas, rutas derivadas de configuración, llamadas encadenadas sin variable intermedia y el enrutamiento construido enteramente en runtime pueden requerir soporte específico adicional.
+
 ## Asociación de pruebas con endpoints
 
 La asociación compara método HTTP y ruta normalizada, incluyendo segmentos de parámetros como `{id}`. Para evitar cruces innecesarios, aplica esta prioridad:

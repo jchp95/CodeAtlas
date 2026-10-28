@@ -1,0 +1,7 @@
+{
+  // Low thresholds keep the fixture small; the defaults are 15 (complexity) and 80 (lines).
+  "rules": {
+    "ATL1009": { "threshold": 5 },
+    "ATL1010": { "threshold": 10 }
+  }
+}

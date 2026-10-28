@@ -121,6 +121,7 @@ final class BuildConsoleModel: ObservableObject {
     private var process: Process?
     private var outputPipe: Pipe?
     private var didRequestCancellation = false
+    private var outputDecoder = UTF8StreamDecoder()
 
     func start(task: BuildConsoleTask, root: URL) {
         guard !isRunning else { return }
@@ -131,6 +132,7 @@ final class BuildConsoleModel: ObservableObject {
             statusText = "Ejecutando…"
             exitCode = nil
             didRequestCancellation = false
+            outputDecoder = UTF8StreamDecoder()
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -149,10 +151,16 @@ final class BuildConsoleModel: ObservableObject {
                 let data = handle.availableData
                 if data.isEmpty {
                     handle.readabilityHandler = nil
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.append(self.outputDecoder.finish())
+                    }
                     return
                 }
-                guard let chunk = String(data: data, encoding: .utf8) else { return }
-                Task { @MainActor [weak self] in self?.append(chunk) }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.append(self.outputDecoder.append(data))
+                }
             }
             process.terminationHandler = { [weak self] child in
                 Task { @MainActor [weak self] in

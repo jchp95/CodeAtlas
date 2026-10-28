@@ -19,7 +19,7 @@ func chooseRepository(addToWorkspace: Bool) {
         snapshot = nil
         httpCatalog = nil
         lastFingerprint = nil
-        Task { await rescan() }
+        startRescan()
     }
 
     func normalizedRepositoryRoots(_ urls: [URL]) -> [URL] {
@@ -41,24 +41,84 @@ func chooseRepository(addToWorkspace: Bool) {
         lastFingerprint = nil
         selectedProjectID = nil
         if repositoryURLs.isEmpty { selectedSection = "Resumen"; return }
-        Task { await rescan() }
+        startRescan()
     }
 
-    @MainActor func rescan() async {
-        guard !repositoryURLs.isEmpty else { return }
-        repositoryURL = repositoryURLs.first
+    @MainActor func startRescan() {
+        let roots = repositoryURLs.map { $0.standardizedFileURL }
+        guard !roots.isEmpty else { return }
+        let scanID = UUID()
+        let previousTask = workspaceScanTask
+        previousTask?.cancel()
+        activeScanID = scanID
+        isCancellingScan = false
         isScanning = true
-        scanProgress = WorkspaceScanProgress(phase: "preparing", completedRoots: 0, totalRoots: repositoryURLs.count, rootName: "")
-        defer { isScanning = false; scanProgress = nil }
+        scanProgress = WorkspaceScanProgress(phase: "preparing", completedRoots: 0, totalRoots: roots.count, rootName: "")
+
+        // Wait until the previous process has actually stopped before starting another scan.
+        // This prevents duplicate dotnet processes from competing over the NuGet cache.
+        workspaceScanTask = Task { @MainActor in
+            if let previousTask { await previousTask.value }
+            guard !Task.isCancelled else {
+                finishScanIfCurrent(scanID)
+                return
+            }
+            await rescan(scanID: scanID, roots: roots)
+        }
+    }
+
+    @MainActor func cancelWorkspaceScan() {
+        guard isScanning, !isCancellingScan else { return }
+        isCancellingScan = true
+        if let progress = scanProgress {
+            scanProgress = WorkspaceScanProgress(
+                phase: "cancelling",
+                completedRoots: progress.completedRoots,
+                totalRoots: progress.totalRoots,
+                rootName: progress.rootName
+            )
+        }
+        workspaceScanTask?.cancel()
+    }
+
+    @MainActor private func rescan(scanID: UUID, roots: [URL]) async {
+        guard activeScanID == scanID else { return }
+        repositoryURL = roots.first
         do {
-            let result = try await engine.scanWorkspace(repositoryURLs: repositoryURLs) { progress in
-                Task { @MainActor in self.scanProgress = progress }
+            try Task.checkCancellation()
+            let result = try await engine.scanWorkspace(repositoryURLs: roots) { progress in
+                Task { @MainActor in
+                    guard self.activeScanID == scanID, !self.isCancellingScan else { return }
+                    self.scanProgress = progress
+                }
+            }
+            try Task.checkCancellation()
+            guard activeScanID == scanID else { return }
+            guard roots.map(\.path) == repositoryURLs.map({ $0.standardizedFileURL.path }) else {
+                finishScanIfCurrent(scanID)
+                return
             }
             snapshot = result
             if let selectedProjectID, !result.projects.contains(where: { $0.id == selectedProjectID }) { self.selectedProjectID = nil }
-            lastFingerprint = try? await engine.workspaceFingerprint(repositoryURLs: repositoryURLs)
+            lastFingerprint = try? await engine.workspaceFingerprint(repositoryURLs: roots)
+            try Task.checkCancellation()
+            guard activeScanID == scanID else { return }
             if selectedSection == "Endpoints HTTP" { await refreshHTTPCatalog() }
-        } catch { errorMessage = error.localizedDescription }
+        } catch is CancellationError {
+            // Cancellation is a normal user action. Do not surface it as an analysis error.
+        } catch {
+            if activeScanID == scanID { errorMessage = error.localizedDescription }
+        }
+        finishScanIfCurrent(scanID)
+    }
+
+    @MainActor private func finishScanIfCurrent(_ scanID: UUID) {
+        guard activeScanID == scanID else { return }
+        isScanning = false
+        isCancellingScan = false
+        scanProgress = nil
+        activeScanID = nil
+        workspaceScanTask = nil
     }
 
     @MainActor func refreshHTTPCatalog() async {
@@ -78,7 +138,7 @@ func chooseRepository(addToWorkspace: Bool) {
             guard watchingRepository, !repositoryURLs.isEmpty, !isScanning else { continue }
             guard let fingerprint = try? await engine.workspaceFingerprint(repositoryURLs: repositoryURLs) else { continue }
             if let lastFingerprint, fingerprint != lastFingerprint {
-                await rescan()
+                startRescan()
             }
         }
     }

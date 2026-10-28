@@ -51,6 +51,10 @@ run_step "VS Code extension and local bridge tests" "$ROOT/scripts/vscode-extens
 run_step "Code explorer tree regression tests" "$ROOT/scripts/code-file-tree-test.sh"
 run_step "Code outline regression tests" "$ROOT/scripts/code-symbol-index-test.sh"
 run_step "Language server protocol and client integration tests" "$ROOT/scripts/language-server-test.sh"
+run_step "Roslyn code analysis, findings and fix tests" "$ROOT/scripts/code-analysis-test.sh"
+run_step "Cancellable process execution tests" "$ROOT/scripts/process-execution-test.sh"
+run_step "Compiled engine invocation resolver tests" "$ROOT/scripts/engine-invocation-test.sh"
+run_step "Workspace cancellation and background-work regression tests" "$ROOT/scripts/workspace-cancellation-test.sh"
 run_step "Vertical-slice structure regression tests" "$ROOT/scripts/vertical-slice-structure-test.sh"
 
 # Compile the actual desktop target only after the logic/integration suite is green.

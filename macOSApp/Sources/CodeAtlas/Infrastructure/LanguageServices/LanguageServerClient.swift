@@ -117,7 +117,7 @@ final class LanguageServerClient {
         ]
         let initialize: [String: Any] = [
             "processId": Int(ProcessInfo.processInfo.processIdentifier),
-            "clientInfo": ["name": "CodeAtlas", "version": "0.19.0"],
+            "clientInfo": ["name": "CodeAtlas", "version": "0.23.0"],
             "rootUri": workspaceRoot.standardizedFileURL.absoluteString,
             "workspaceFolders": [["uri": workspaceRoot.standardizedFileURL.absoluteString, "name": workspaceRoot.lastPathComponent]],
             "capabilities": capabilities,

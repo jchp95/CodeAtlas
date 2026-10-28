@@ -1,6 +1,44 @@
-# CodeAtlas + StackPilot — MVP 0.19.0
+# CodeAtlas + StackPilot — MVP 0.23.0
 
 macOS desktop developer control center that combines a block-based architecture map, Git snapshot comparisons, local microservice operations, HTTP endpoint testing, and an optional AI engineering assistant.
+
+## What's new in 0.22.0
+
+- Shows the complete HTTP catalog diagnostic list instead of silently hiding every warning after the first one. This includes unresolved dynamic route prefixes, missing `.http` files, unmatched requests, ambiguous outgoing calls and source parsing failures.
+- Adds a bounded, scrollable diagnostics area with a warning count, readable multi-line messages, selectable text and severity cues; diagnostics remain tied to the currently loaded catalog.
+- Synchronizes the visible app version and LSP client identity with the release version.
+- Keeps route discovery conservative: unresolved dynamic routes are reported, not presented as complete endpoints.
+- Validation: portable Swift/Node regression suites and source parsing run in this environment; full SwiftUI and .NET engine builds still require macOS with the required SDKs.
+
+## What's new in 0.23.0
+
+- Fixes a build/test console output edge case where UTF-8 characters split across pipe reads could be dropped because each chunk was decoded independently.
+- Adds a streaming UTF-8 decoder that buffers incomplete multi-byte sequences and flushes remaining bytes when the stream closes.
+- Adds regression coverage that splits accented text and emoji at arbitrary byte boundaries.
+- Validation: portable UTF-8 decoder tests and the existing Swift/Node regression suites. Full SwiftUI/.NET builds remain a macOS SDK validation step.
+
+## What's new in 0.22.0
+
+- Shows the complete HTTP catalog diagnostic list instead of silently hiding every warning after the first one. This includes unresolved dynamic route prefixes, missing `.http` files, unmatched requests, ambiguous outgoing calls and source parsing failures.
+- Adds a bounded, scrollable diagnostics area with a warning count, readable multi-line messages, selectable text and severity cues; diagnostics remain tied to the currently loaded catalog.
+- Synchronizes the visible app version and LSP client identity with the release version.
+
+## What's new in 0.21.0
+
+- Resolves cross-file `const string` route values for controllers, Minimal APIs and FastEndpoints when unambiguous.
+- Resolves nested `MapGroup` prefixes independent of declaration order and applies prefixes to `MapMethods`.
+- Avoids publishing misleading partial routes for dynamic/unresolved group prefixes and emits file/line diagnostics.
+- Splits Next.js endpoint detection and route resolution into dedicated engine files and adds route regression coverage.
+
+## What's new in 0.20.0
+
+- Adds bounded process execution shared by engine and Git commands. Both stdout and stderr are drained concurrently, output is capped, exit codes are preserved and cancellation terminates the child process.
+- Workspace scanning can be cancelled from the progress strip. The coordinator waits for the prior scan to finish before starting a replacement, preventing multiple dotnet processes from racing over the same NuGet cache.
+- Moves snapshot JSON decoding, multi-repository merging and changed-file fingerprint hashing off the SwiftUI main actor.
+- Uses the compiled `CodeAtlas.Engine.dll` produced by the mandatory startup build for subsequent commands instead of invoking `dotnet run` for each engine request. A clean source checkout retains a fallback until the first build.
+- Makes Git fingerprint paths NUL-safe and avoids holding the full binary diff in memory; changed tracked files are hashed individually with a bounded fallback for very large files.
+- Adds regression tests for process output, non-zero exit status, output bounds, cancellation, engine assembly selection and workspace cancellation wiring.
+- The macOS/.NET full integration build must still be run on macOS; Linux verification covers the portable process tests and source-level checks only.
 
 ## What's new in 0.19.0
 

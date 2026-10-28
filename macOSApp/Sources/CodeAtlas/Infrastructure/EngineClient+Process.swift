@@ -1,33 +1,27 @@
 import Foundation
 
 extension EngineClient {
-func runEngine(arguments: [String]) async throws -> Data {
-        try await Task.detached(priority: .userInitiated) {
-            let engine = try Self.resolveEngineDirectory()
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [
-                "dotnet", "run", "--verbosity", "quiet",
-                "--project", engine.appendingPathComponent("CodeAtlas.Engine.csproj").path,
-                "--"
-            ] + arguments
-            process.currentDirectoryURL = engine
+    func runEngine(arguments: [String]) async throws -> Data {
+        let engine = try Self.resolveEngineDirectory()
+        let dotnetArguments = EngineInvocationResolver.arguments(engineDirectory: engine, commandArguments: arguments)
+        let result: ProcessExecutionResult
+        do {
+            result = try await ProcessExecutionService.run(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["dotnet"] + dotnetArguments,
+                currentDirectoryURL: engine
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw EngineError.processFailed(error.localizedDescription)
+        }
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            try process.run()
-            let outputTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }
-            let errorTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }
-            process.waitUntilExit()
-            let outputData = await outputTask.value
-            let errorData = await errorTask.value
-            guard process.terminationStatus == 0 else {
-                throw EngineError.processFailed(String(data: errorData, encoding: .utf8) ?? "exit \(process.terminationStatus)")
-            }
-            return outputData
-        }.value
+        guard result.terminationStatus == 0 else {
+            let message = String(data: result.standardError, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw EngineError.processFailed(message?.isEmpty == false ? message! : "dotnet terminó con código \(result.terminationStatus)")
+        }
+        return result.standardOutput
     }
 
     static func resolveEngineDirectory() throws -> URL {
@@ -46,27 +40,25 @@ func runEngine(arguments: [String]) async throws -> Data {
     }
 
     static func runGit(_ arguments: [String], at directory: URL) async throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = arguments
-        process.currentDirectoryURL = directory
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
+        let result: ProcessExecutionResult
         do {
-            try process.run()
+            result = try await ProcessExecutionService.run(
+                executableURL: URL(fileURLWithPath: "/usr/bin/git"),
+                arguments: arguments,
+                currentDirectoryURL: directory,
+                maximumStandardOutputBytes: 64 * 1024 * 1024,
+                maximumStandardErrorBytes: 4 * 1024 * 1024
+            )
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw EngineError.gitFailed(error.localizedDescription)
         }
-        let outputTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }
-        let errorTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }
-        process.waitUntilExit()
-        let outputData = await outputTask.value
-        let errorData = await errorTask.value
-        guard process.terminationStatus == 0 else {
-            throw EngineError.gitFailed(String(data: errorData, encoding: .utf8) ?? "exit \(process.terminationStatus)")
+        guard result.terminationStatus == 0 else {
+            let message = String(data: result.standardError, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw EngineError.gitFailed(message?.isEmpty == false ? message! : "git terminó con código \(result.terminationStatus)")
         }
-        return String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return String(data: result.standardOutput, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
+
 }

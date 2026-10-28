@@ -87,3 +87,11 @@ A goal of becoming an IDE does not mean replacing Rider, Cursor or VS Code immed
 - Supported launch candidates: C#, TypeScript/JavaScript, Swift, Python and JSON. Providers must already be installed and reachable on `PATH`.
 - Server-originated file edits and command requests are not auto-applied.
 - Remaining: inline completion triggers, references/rename/code actions, formatter/code-action integrations, UI configuration for executable paths, and provider-by-provider real macOS integration tests.
+
+
+## 0.20.0 scope: responsive workspace analysis
+
+- Workspace scans expose a cancel control and stop the active child process; new scans wait for an older scan to finish.
+- Engine and Git process execution is bounded and cancellable, using a pre-built .NET assembly when available.
+- JSON decoding, multi-root merging and changed-file fingerprint computation run outside the UI main actor.
+- Process output size and cancellation are regression-tested. Native app build and complete .NET integration still require a macOS/.NET 10 host.

@@ -10,13 +10,39 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 static partial class HttpTestingCatalogBuilder
 {
-private static string? GetAttributeRoute(SyntaxList<AttributeListSyntax> lists, string name) => lists.SelectMany(l => l.Attributes)
-        .Where(a => AttributeName(a).Equals(name, StringComparison.OrdinalIgnoreCase)).Select(GetAttributeString).FirstOrDefault(v => v is not null);
-    private static string? GetAttributeString(AttributeSyntax attribute) => attribute.ArgumentList?.Arguments.Select(a => a.Expression)
-        .OfType<LiteralExpressionSyntax>().FirstOrDefault(l => l.IsKind(SyntaxKind.StringLiteralExpression))?.Token.ValueText;
+private static string? GetAttributeRoute(SyntaxList<AttributeListSyntax> lists, string name, IReadOnlyDictionary<string, string>? constants = null) =>
+        lists.SelectMany(l => l.Attributes)
+            .Where(a => AttributeName(a).Equals(name, StringComparison.OrdinalIgnoreCase))
+            .Select(attribute => GetAttributeString(attribute, constants)).FirstOrDefault(value => value is not null);
+    private static string? GetAttributeString(AttributeSyntax attribute, IReadOnlyDictionary<string, string>? constants = null) =>
+        attribute.ArgumentList?.Arguments.Select(argument => ResolveStringExpression(argument.Expression, constants))
+            .FirstOrDefault(value => value is not null);
     private static string AttributeName(AttributeSyntax attribute) => attribute.Name.ToString().Split('.').Last().Replace("Attribute", "", StringComparison.Ordinal);
-    private static string? FirstString(ArgumentListSyntax args) => args.Arguments.Select(a => a.Expression).OfType<LiteralExpressionSyntax>()
-        .FirstOrDefault(l => l.IsKind(SyntaxKind.StringLiteralExpression))?.Token.ValueText;
+    private static string? FirstString(ArgumentListSyntax args, IReadOnlyDictionary<string, string>? constants = null) =>
+        args.Arguments.Select(a => ResolveStringExpression(a.Expression, constants)).FirstOrDefault(value => value is not null);
+
+    private static string? ResolveStringExpression(ExpressionSyntax expression, IReadOnlyDictionary<string, string>? constants)
+    {
+        switch (expression)
+        {
+            case LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.StringLiteralExpression):
+                return literal.Token.ValueText;
+            case ParenthesizedExpressionSyntax parenthesized:
+                return ResolveStringExpression(parenthesized.Expression, constants);
+            case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.AddExpression):
+            {
+                var left = ResolveStringExpression(binary.Left, constants);
+                var right = ResolveStringExpression(binary.Right, constants);
+                return left is not null && right is not null ? left + right : null;
+            }
+            case IdentifierNameSyntax identifier when constants is not null && constants.TryGetValue(identifier.Identifier.ValueText, out var value):
+                return value;
+            case MemberAccessExpressionSyntax member when constants is not null && constants.TryGetValue(member.ToString(), out var memberValue):
+                return memberValue;
+            default:
+                return null;
+        }
+    }
     private static string InvokedName(ExpressionSyntax expression) => expression switch
     {
         MemberAccessExpressionSyntax m => m.Name.Identifier.ValueText,

@@ -16,10 +16,13 @@ CodeAtlas.Engine
   http-catalog <repository-path>
   http-call <METHOD> <absolute-url> <headers-base64> <body-base64>
   http-file-run <repository-path> <relative-http-file> <request-index> <environment-name> <overrides-base64>
+  analyze <repository-path> [--no-cache] [--rules ATL1001,ATL1003] [--max-parallelism N]
+  analysis-rules
+  fix <repository-path> <finding-id> [--apply [--base-hash HASH]]
   stackpilot <status|init|enable|disable|start|stop|start-profile|stop-profile|logs> [options]
 """;
 
-if (args.Length < 2)
+if (args.Length < 2 && !(args.Length == 1 && args[0].Equals("analysis-rules", StringComparison.OrdinalIgnoreCase)))
 {
     Console.Error.WriteLine(Usage);
     return 2;
@@ -28,6 +31,66 @@ if (args.Length < 2)
 var jsonOptions = JsonDefaults.Options;
 switch (args[0].ToLowerInvariant())
 {
+    case "analyze":
+    {
+        var root = Path.GetFullPath(args[1]);
+        if (!Directory.Exists(root))
+        {
+            Console.Error.WriteLine($"Repository directory does not exist: {root}");
+            return 2;
+        }
+        var rest = args.Skip(2).ToArray();
+        var ruleIds = OptionValue(rest, "--rules")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        int? parallelism = int.TryParse(OptionValue(rest, "--max-parallelism"), out var parsedParallelism) ? parsedParallelism : null;
+        using var cancellation = new ProcessCancellation();
+        var report = new CodeAnalysisEngine(root, new AnalysisOptions(!rest.Contains("--no-cache"), ruleIds, parallelism)).Run(cancellation.Token);
+        Console.Write(JsonSerializer.Serialize(report, jsonOptions));
+        return report.Cancelled ? 130 : 0;
+    }
+    case "analysis-rules":
+        Console.Write(JsonSerializer.Serialize(CodeAnalysisEngine.Descriptors, jsonOptions));
+        return 0;
+    case "fix":
+    {
+        var root = Path.GetFullPath(args[1]);
+        if (args.Length < 3 || !Directory.Exists(root))
+        {
+            Console.Error.WriteLine("Usage: CodeAtlas.Engine fix <repository-path> <finding-id> [--apply]");
+            return 2;
+        }
+        using var cancellation = new ProcessCancellation();
+        var report = new CodeAnalysisEngine(root, new AnalysisOptions()).Run(cancellation.Token);
+        var finding = report.Findings.FirstOrDefault(f => f.Id.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        if (finding is null)
+        {
+            Console.Error.WriteLine($"No finding with id {args[2]} exists in the current analysis.");
+            return 3;
+        }
+        if (finding.Fix is null)
+        {
+            Console.Error.WriteLine($"{finding.RuleId} has no automatic fix for this finding; follow the recommendation manually.");
+            return 4;
+        }
+        // The diff is always shown first; the file is modified only with an explicit --apply.
+        Console.Write(finding.Fix.UnifiedDiff);
+        var fixArguments = args.Skip(3).ToArray();
+        if (!fixArguments.Contains("--apply")) return 0;
+        // The caller passes the hash of the file it previewed so a change made after the preview is never overwritten.
+        var previewedHash = OptionValue(fixArguments, "--base-hash");
+        if (previewedHash is not null && !previewedHash.Equals(finding.Fix.BaseFileHash, StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine($"{finding.Fix.File} changed after the preview was shown; the fix was not applied.");
+            return 5;
+        }
+        var error = FixBuilder.TryApply(root, finding.Fix);
+        if (error is not null)
+        {
+            Console.Error.WriteLine(error);
+            return 5;
+        }
+        Console.Error.WriteLine($"Applied: {finding.Fix.Title}");
+        return 0;
+    }
     case "scan":
     {
         var root = Path.GetFullPath(args[1]);
@@ -142,4 +205,10 @@ switch (args[0].ToLowerInvariant())
     default:
         Console.Error.WriteLine(Usage);
         return 2;
+}
+
+static string? OptionValue(string[] arguments, string name)
+{
+    var index = Array.FindIndex(arguments, a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
+    return index >= 0 && index + 1 < arguments.Length ? arguments[index + 1] : null;
 }

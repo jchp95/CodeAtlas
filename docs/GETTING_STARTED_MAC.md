@@ -118,3 +118,19 @@ Para validar el protocolo independientemente del proveedor instalado:
 ```
 
 Esta prueba inicia un servidor simulado sobre `stdin`/`stdout` y verifica el handshake, diagnósticos, completion, definition y sincronización. No sustituye la prueba de un servidor real en el Mac.
+
+
+## Cancelar y validar los análisis (0.20.0)
+
+La barra de análisis del workspace incluye **Cancelar**. Cancelar termina el proceso activo y no muestra la cancelación como un error. Una actualización nueva espera a que la operación anterior haya terminado para evitar dos procesos del motor compitiendo a la vez.
+
+Para comprobar este comportamiento antes del lanzamiento:
+
+```bash
+./scripts/process-execution-test.sh
+./scripts/engine-invocation-test.sh
+./scripts/workspace-cancellation-test.sh
+./scripts/verify-before-launch.sh
+```
+
+Después del build de arranque, las llamadas al motor prefieren `bin/Debug/net10.0/CodeAtlas.Engine.dll` (o Release si no existe Debug). No ejecutes la aplicación omitiendo el script de lanzamiento en el flujo normal de desarrollo.

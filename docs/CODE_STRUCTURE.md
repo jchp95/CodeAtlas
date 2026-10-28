@@ -1,6 +1,6 @@
 # CodeAtlas + StackPilot — estructura de código
 
-La versión 0.15.0 añade herramientas de build/test, Git, perfiles/diagnóstico y comandos de formato/IA sobre la base 0.14.0. La versión 0.14.0 añadió navegación al código fuente y descubrimiento FastEndpoints. El editor todavía no sustituye un editor LSP completo.
+La versión 0.23.0 hace segura la decodificación UTF-8 de la salida de build/test cuando un carácter llega dividido entre lecturas. La versión 0.22.0 muestra el diagnóstico completo del catálogo HTTP y sincroniza la versión de la app y del cliente LSP. La versión 0.21.0 refuerza la resolución de rutas HTTP con constantes cross-file, grupos Minimal API anidados y diagnósticos para prefijos dinámicos. La versión 0.20.0 añadió cancelación real de procesos y ejecución del ensamblado compilado. La versión 0.19.0 incorporó el cliente LSP. La versión 0.15.0 añadió herramientas de build/test, Git, perfiles/diagnóstico y comandos de formato/IA sobre la base 0.14.0. La versión 0.14.0 añadió navegación al código fuente y descubrimiento FastEndpoints. El editor todavía no sustituye un editor LSP completo.
 
 La versión 0.13.1 reorganiza el código por funcionalidades y responsabilidades. El cambio es estructural: no busca redefinir reglas de análisis, datos de snapshot, criterios de detección ni operaciones de StackPilot.
 
@@ -119,3 +119,12 @@ El analizador de flujos utiliza primero los símbolos de Roslyn. Si una referenc
 - `Views/CodeEditor/Components/`: diagnostics and completion picker components; `CodeExplorerView+AI.swift` owns the separate generative-code flow.
 
 The protocol client is tested independently with a local fake server. Real language-server behavior still requires a macOS verification pass for each installed provider.
+
+
+## Process execution and workspace scans (0.20.0)
+
+- `Infrastructure/ProcessExecutionService.swift` owns child-process lifecycle, cancellation, independent stdout/stderr draining and output caps.
+- `Infrastructure/EngineInvocationResolver.swift` chooses the already-built engine assembly where available and falls back to `dotnet run` for an unbuilt source checkout.
+- `Infrastructure/EngineClient+Process.swift` is the adapter for engine and Git CLI operations; it translates low-level process failures into domain-facing errors.
+- `ContentView+Workspace.swift` owns scan task identity, cancellation and stale-result rejection. It waits for a previous scan to stop before starting a new one.
+- Expensive JSON decoding, workspace merge and changed-file fingerprint hashing are delegated away from the main actor.

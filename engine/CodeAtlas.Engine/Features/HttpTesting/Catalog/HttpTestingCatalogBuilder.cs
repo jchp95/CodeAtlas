@@ -35,7 +35,7 @@ static partial class HttpTestingCatalogBuilder
                 .Where(file => !IsWithinNestedProject(file, projectDir, project, projects, root)).ToArray();
             filesByProject[project.Id] = files;
             if (project.Kind == "Dotnet")
-                endpoints.AddRange(ScanDotnet(project, files, root, repositories, typeIndex));
+                endpoints.AddRange(ScanDotnet(project, files, root, repositories, typeIndex, BuildStringConstantIndex(files), warnings));
             else if (project.Kind == "Next.js")
                 endpoints.AddRange(ScanNext(project, projectDir, files, root, repositories));
         }
@@ -123,7 +123,8 @@ static partial class HttpTestingCatalogBuilder
     }
 
     private static IEnumerable<ApiEndpoint> ScanDotnet(ProjectNode project, string[] files, string root,
-        GitRepositoryState[] repositories, Dictionary<string, BaseTypeDeclarationSyntax[]> types)
+        GitRepositoryState[] repositories, Dictionary<string, BaseTypeDeclarationSyntax[]> types,
+        Dictionary<string, string> stringConstants, List<string> warnings)
     {
         foreach (var file in files.Where(f => Path.GetExtension(f).Equals(".cs", StringComparison.OrdinalIgnoreCase)))
         {
@@ -134,7 +135,7 @@ static partial class HttpTestingCatalogBuilder
             var relative = Relative(root, file);
             foreach (var controller in syntaxRoot.DescendantNodes().OfType<ClassDeclarationSyntax>())
             {
-                var controllerRouteTemplate = GetAttributeRoute(controller.AttributeLists, "Route") ?? "";
+                var controllerRouteTemplate = GetAttributeRoute(controller.AttributeLists, "Route", stringConstants) ?? "";
                 foreach (var method in controller.Members.OfType<MethodDeclarationSyntax>())
                 {
                     var httpAttributes = method.AttributeLists.SelectMany(list => list.Attributes)
@@ -142,7 +143,7 @@ static partial class HttpTestingCatalogBuilder
                     foreach (var attribute in httpAttributes)
                     {
                         if (!TryHttpVerb(AttributeName(attribute), out var verb)) continue;
-                        var actionRoute = GetAttributeString(attribute) ?? GetAttributeRoute(method.AttributeLists, "Route") ?? "";
+                        var actionRoute = GetAttributeString(attribute, stringConstants) ?? GetAttributeRoute(method.AttributeLists, "Route", stringConstants) ?? "";
                         var controllerName = controller.Identifier.ValueText.EndsWith("Controller", StringComparison.OrdinalIgnoreCase)
                             ? controller.Identifier.ValueText[..^10] : controller.Identifier.ValueText;
                         var controllerRoute = controllerRouteTemplate.Replace("[controller]", controllerName, StringComparison.OrdinalIgnoreCase)
@@ -161,46 +162,28 @@ static partial class HttpTestingCatalogBuilder
             // FastEndpoints uses an Endpoint<TRequest,TResponse> base class and declares
             // the HTTP verb + route inside Configure(). These are not ASP.NET attributes
             // or Minimal API MapGet calls, so they need an explicit detector.
-            foreach (var endpoint in ScanFastEndpoints(project, syntaxRoot, root, repositories, types))
+            foreach (var endpoint in ScanFastEndpoints(project, syntaxRoot, root, repositories, types, stringConstants))
                 yield return endpoint;
 
-            var groupDefinitions = syntaxRoot.DescendantNodes().OfType<VariableDeclaratorSyntax>()
-                .Where(variable => variable.Initializer?.Value is InvocationExpressionSyntax)
-                .Select(variable => (Name: variable.Identifier.ValueText, Invocation: (InvocationExpressionSyntax)variable.Initializer!.Value))
-                .Where(variable => InvokedName(variable.Invocation.Expression) == "MapGroup")
-                .GroupBy(variable => variable.Name, StringComparer.Ordinal)
-                .Where(group => group.Count() == 1)
-                .Select(group => group.Single()).ToArray();
-            var groups = new Dictionary<string, string>(StringComparer.Ordinal);
-            // Resolve nested groups over several passes: api.MapGroup("/v1") followed by
-            // v1.MapGroup("/cargo") must produce /v1/cargo, regardless of declaration nesting.
-            for (var pass = 0; pass < groupDefinitions.Length; pass++)
-            {
-                var changed = false;
-                foreach (var definition in groupDefinitions)
-                {
-                    var localPrefix = FirstString(definition.Invocation.ArgumentList);
-                    if (string.IsNullOrWhiteSpace(localPrefix) || groups.ContainsKey(definition.Name)) continue;
-                    var parentPrefix = definition.Invocation.Expression is MemberAccessExpressionSyntax groupMember
-                        && groupMember.Expression is IdentifierNameSyntax parentIdentifier
-                        && groups.TryGetValue(parentIdentifier.Identifier.ValueText, out var foundParent)
-                            ? foundParent : string.Empty;
-                    groups[definition.Name] = CombineRoute(parentPrefix, localPrefix);
-                    changed = true;
-                }
-                if (!changed) break;
-            }
+            var groups = ResolveMapGroups(syntaxRoot, stringConstants, out var unresolvedGroups);
 
             foreach (var invocation in syntaxRoot.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 var name = InvokedName(invocation.Expression);
                 if (TryMapVerb(name, out var verb))
                 {
-                    var route = FirstString(invocation.ArgumentList);
+                    var route = FirstString(invocation.ArgumentList, stringConstants);
                     if (route is null) continue;
                     if (invocation.Expression is MemberAccessExpressionSyntax member
-                        && member.Expression is IdentifierNameSyntax receiver
-                        && groups.TryGetValue(receiver.Identifier.ValueText, out var prefix)) route = CombineRoute(prefix, route);
+                        && member.Expression is IdentifierNameSyntax receiver)
+                    {
+                        if (groups.TryGetValue(receiver.Identifier.ValueText, out var prefix)) route = CombineRoute(prefix, route);
+                        else if (unresolvedGroups.Contains(receiver.Identifier.ValueText))
+                        {
+                            warnings.Add($"No se publicó una ruta parcial en {relative}:{Line(invocation)}: el prefijo MapGroup de '{receiver.Identifier.ValueText}' es dinámico o no se pudo resolver.");
+                            continue;
+                        }
+                    }
                     var callback = invocation.ArgumentList.Arguments.Skip(1).Select(a => a.Expression).OfType<LambdaExpressionSyntax>().FirstOrDefault();
                     var parameters = callback switch
                     {
@@ -214,8 +197,18 @@ static partial class HttpTestingCatalogBuilder
                 }
                 else if (name == "MapMethods")
                 {
-                    var route = FirstString(invocation.ArgumentList);
+                    var route = FirstString(invocation.ArgumentList, stringConstants);
                     if (route is null) continue;
+                    if (invocation.Expression is MemberAccessExpressionSyntax member
+                        && member.Expression is IdentifierNameSyntax receiver)
+                    {
+                        if (groups.TryGetValue(receiver.Identifier.ValueText, out var prefix)) route = CombineRoute(prefix, route);
+                        else if (unresolvedGroups.Contains(receiver.Identifier.ValueText))
+                        {
+                            warnings.Add($"No se publicó una ruta parcial en {relative}:{Line(invocation)}: el prefijo MapGroup de '{receiver.Identifier.ValueText}' es dinámico o no se pudo resolver.");
+                            continue;
+                        }
+                    }
                     var methodExpression = invocation.ArgumentList.Arguments.Skip(1).FirstOrDefault()?.Expression;
                     var methods = methodExpression is null ? Array.Empty<string>() : methodExpression.DescendantNodesAndSelf()
                         .OfType<LiteralExpressionSyntax>()
@@ -229,32 +222,5 @@ static partial class HttpTestingCatalogBuilder
         }
     }
 
-    private static IEnumerable<ApiEndpoint> ScanNext(ProjectNode project, string projectDirectory, string[] files,
-        string root, GitRepositoryState[] repositories)
-    {
-        foreach (var file in files.Where(f => new[] { ".ts", ".tsx", ".js", ".jsx" }.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase)))
-        {
-            var rel = Relative(projectDirectory, file).Replace('\\', '/');
-            var appRouter = rel.StartsWith("app/api/", StringComparison.Ordinal) || rel.StartsWith("src/app/api/", StringComparison.Ordinal);
-            var pagesRouter = rel.StartsWith("pages/api/", StringComparison.Ordinal) || rel.StartsWith("src/pages/api/", StringComparison.Ordinal);
-            if (!appRouter && !pagesRouter) continue;
-            if (appRouter && !Path.GetFileName(file).StartsWith("route.", StringComparison.OrdinalIgnoreCase)) continue;
-            var route = appRouter ? NextAppRoute(rel) : NextPagesRoute(rel);
-            var content = File.ReadAllText(file);
-            var relative = Relative(root, file);
-            var methodMatches = Regex.Matches(content,
-                @"\bexport\s+(?:async\s+)?(?:function\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b|const\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*=)", RegexOptions.IgnoreCase).Cast<Match>().ToArray();
-            var methods = methodMatches.Select(m => (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value).ToUpperInvariant())
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            if (methods.Length == 0 && pagesRouter) methods = new[] { "ANY" };
-            foreach (var method in methods)
-            {
-                var match = methodMatches.FirstOrDefault(m => (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value).Equals(method, StringComparison.OrdinalIgnoreCase));
-                var line = match is null ? 1 : 1 + content[..match.Index].Count(c => c == '\n');
-                yield return MakeEndpoint(project, root, repositories, appRouter ? "Next.js App Router" : "Next.js Pages API",
-                    method, route, relative, line, null, new Dictionary<string, BaseTypeDeclarationSyntax[]>(),
-                    Array.Empty<string>(), "Método exportado detectado en la ruta API.");
-            }
-        }
-    }
+
 }

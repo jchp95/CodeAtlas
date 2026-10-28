@@ -33,6 +33,7 @@ struct WorkspaceScanProgress: Sendable {
         case "scanning": return "Analizando \(rootName) · repositorio \(min(completedRoots + 1, max(totalRoots, 1))) de \(totalRoots)"
         case "merging": return "Combinando proyectos, relaciones y flujos…"
         case "completed": return "Análisis del workspace completado"
+        case "cancelling": return "Cancelando el análisis y cerrando el proceso actual…"
         default: return phase
         }
     }
@@ -40,39 +41,17 @@ struct WorkspaceScanProgress: Sendable {
 
 struct EngineClient {
     func scan(repositoryURL: URL) async throws -> ArchitectureSnapshot {
-        try await Task.detached(priority: .userInitiated) {
-            let engine = try Self.resolveEngineDirectory()
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [
-                "dotnet", "run", "--verbosity", "quiet",
-                "--project", engine.appendingPathComponent("CodeAtlas.Engine.csproj").path,
-                "--", "scan", repositoryURL.path
-            ]
-            process.currentDirectoryURL = engine
-
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            try process.run()
-
-            // Read both streams concurrently to avoid blocking if either pipe fills.
-            let outputTask = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }
-            let errorTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }
-            process.waitUntilExit()
-            let outputData = await outputTask.value
-            let errorData = await errorTask.value
-
-            guard process.terminationStatus == 0 else {
-                throw EngineError.processFailed(String(data: errorData, encoding: .utf8) ?? "exit \(process.terminationStatus)")
-            }
-            do {
-                return try JSONDecoder().decode(ArchitectureSnapshot.self, from: outputData)
-            } catch {
-                throw EngineError.invalidOutput("\(error.localizedDescription). Comprueba que stdout contiene solo JSON válido.")
-            }
-        }.value
+        let output = try await runEngine(arguments: ["scan", repositoryURL.standardizedFileURL.path])
+        do {
+            // Decode large architecture snapshots away from the main actor so graph construction
+            // and JSON parsing do not freeze the editor while a workspace is being rescanned.
+            return try await Task.detached(priority: .userInitiated) {
+                try JSONDecoder().decode(ArchitectureSnapshot.self, from: output)
+            }.value
+        } catch {
+            if error is CancellationError { throw error }
+            throw EngineError.invalidOutput("\(error.localizedDescription). Comprueba que stdout contiene solo JSON válido.")
+        }
     }
 
     func scanWorkspace(
@@ -81,10 +60,13 @@ struct EngineClient {
     ) async throws -> ArchitectureSnapshot {
         let roots = repositoryURLs.map { $0.standardizedFileURL }
         guard !roots.isEmpty else { throw EngineError.processFailed("Selecciona al menos una carpeta para analizar.") }
+        try Task.checkCancellation()
         onProgress?(WorkspaceScanProgress(phase: "preparing", completedRoots: 0, totalRoots: roots.count, rootName: ""))
         if roots.count == 1, let only = roots.first {
+            try Task.checkCancellation()
             onProgress?(WorkspaceScanProgress(phase: "scanning", completedRoots: 0, totalRoots: 1, rootName: only.lastPathComponent))
             var snapshot = try await scan(repositoryURL: only)
+            try Task.checkCancellation()
             snapshot.workspaceRoots = [only.path]
             snapshot.projects = snapshot.projects.map { project in var copy = project; copy.repositoryRoot = only.path; return copy }
             onProgress?(WorkspaceScanProgress(phase: "completed", completedRoots: 1, totalRoots: 1, rootName: only.lastPathComponent))
@@ -93,12 +75,18 @@ struct EngineClient {
         var entries: [(root: URL, snapshot: ArchitectureSnapshot)] = []
         // Keep scans sequential to avoid several dotnet restore/build processes competing for the same NuGet cache.
         for (index, root) in roots.enumerated() {
+            try Task.checkCancellation()
             onProgress?(WorkspaceScanProgress(phase: "scanning", completedRoots: index, totalRoots: roots.count, rootName: root.lastPathComponent))
             entries.append((root: root, snapshot: try await scan(repositoryURL: root)))
+            try Task.checkCancellation()
             onProgress?(WorkspaceScanProgress(phase: "scanning", completedRoots: index + 1, totalRoots: roots.count, rootName: root.lastPathComponent))
         }
         onProgress?(WorkspaceScanProgress(phase: "merging", completedRoots: roots.count, totalRoots: roots.count, rootName: ""))
-        guard let merged = WorkspaceSnapshotMerger.merge(entries) else {
+        let merged = await Task.detached(priority: .userInitiated) {
+            WorkspaceSnapshotMerger.merge(entries)
+        }.value
+        try Task.checkCancellation()
+        guard let merged else {
             throw EngineError.invalidOutput("No se pudo combinar el workspace seleccionado.")
         }
         onProgress?(WorkspaceScanProgress(phase: "completed", completedRoots: roots.count, totalRoots: roots.count, rootName: ""))
@@ -106,26 +94,50 @@ struct EngineClient {
     }
 
     func workspaceFingerprint(repositoryURL: URL) async throws -> String {
-        try await Task.detached(priority: .utility) {
-            let head = try await Self.runGit(["rev-parse", "HEAD"], at: repositoryURL)
-            let branch = try await Self.runGit(["branch", "--show-current"], at: repositoryURL)
-            let status = try await Self.runGit(["status", "--porcelain=v1", "--untracked-files=all"], at: repositoryURL)
-            // Include the actual tracked diff so edits to an already-dirty file are detected too.
-            let trackedDiff = try await Self.runGit(["diff", "--binary", "HEAD", "--"], at: repositoryURL)
-            let untrackedMetadata = status.split(separator: "\n").compactMap { line -> String? in
-                guard line.hasPrefix("?? ") else { return nil }
-                let relativePath = String(line.dropFirst(3))
-                let url = repositoryURL.appendingPathComponent(relativePath)
-                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]) else { return relativePath }
-                let modified = values.contentModificationDate?.timeIntervalSince1970 ?? 0
-                return "\(relativePath)|\(values.fileSize ?? -1)|\(modified)"
-            }.joined(separator: "\n")
-            let material = [head, branch, status, trackedDiff, untrackedMetadata].joined(separator: "\n")
-            // Hasher is intentionally process-local: the fingerprint is only compared during
-            // this app session, so a cryptographic persisted hash is unnecessary.
-            var hasher = Hasher()
-            hasher.combine(material)
-            return String(hasher.finalize())
+        let root = repositoryURL.standardizedFileURL
+        try Task.checkCancellation()
+        let head = try await Self.runGit(["rev-parse", "HEAD"], at: root)
+        try Task.checkCancellation()
+        let branch = try await Self.runGit(["branch", "--show-current"], at: root)
+        try Task.checkCancellation()
+        let status = try await Self.runGit(["status", "--porcelain=v1", "--untracked-files=all", "-z"], at: root)
+
+        // Only hash changed tracked paths, not a giant `git diff --binary` string. This keeps
+        // memory bounded for repositories with large assets while still noticing edits to a
+        // file which was already dirty when the previous fingerprint was captured.
+        let changedPaths = try await Self.runGit(["diff", "--name-only", "-z", "HEAD", "--"], at: root)
+            .split(separator: "\0").map(String.init)
+        let changedContent = await Task.detached(priority: .utility) {
+            var fingerprints: [String] = []
+            for path in changedPaths.sorted() {
+                let fileURL = root.appendingPathComponent(path)
+                if let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
+                   values.isRegularFile == true,
+                   let size = values.fileSize,
+                   size <= 32 * 1024 * 1024,
+                   let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]) {
+                    var fileHasher = Hasher()
+                    fileHasher.combine(data)
+                    fingerprints.append("\(path)|\(size)|\(fileHasher.finalize())")
+                } else {
+                    let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                    fingerprints.append("\(path)|\(values?.fileSize ?? -1)|\((values?.contentModificationDate?.timeIntervalSince1970) ?? 0)")
+                }
+            }
+            return fingerprints
         }.value
+        let untrackedMetadata = status.split(separator: "\0").compactMap { line -> String? in
+            guard line.hasPrefix("?? ") else { return nil }
+            let relativePath = String(line.dropFirst(3))
+            let url = root.appendingPathComponent(relativePath)
+            guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]) else { return relativePath }
+            let modified = values.contentModificationDate?.timeIntervalSince1970 ?? 0
+            return "\(relativePath)|\(values.fileSize ?? -1)|\(modified)"
+        }.joined(separator: "\n")
+        let material = [head, branch, status, changedContent.joined(separator: "\n"), untrackedMetadata].joined(separator: "\n")
+        var hasher = Hasher()
+        hasher.combine(material)
+        return String(hasher.finalize())
     }
+
 }

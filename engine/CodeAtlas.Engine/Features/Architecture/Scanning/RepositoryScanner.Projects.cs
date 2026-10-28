@@ -84,11 +84,10 @@ private IReadOnlyDictionary<string, string[]> BuildRepositoryTypeIndex(List<stri
             warnings.Add($"Could not fully parse {relative}: {ex.Message}");
         }
 
-        var sourceFiles = EnumerateFiles(projectDirectory, "*.cs").ToArray();
-        var nestedProjectDirectories = EnumerateFiles(projectDirectory, "*.csproj")
-            .Where(p => !PathTools.PathsEqual(p, projectFile))
-            .Select(p => Path.GetDirectoryName(p)).Where(p => p is not null).Cast<string>().ToArray();
-        sourceFiles = sourceFiles.Where(file => !nestedProjectDirectories.Any(dir => PathTools.IsWithin(file, dir))).Take(6000).ToArray();
+        var compilationUnit = CreateProjectCompilation(projectFile, name, framework, relative, warnings);
+        var sourceFiles = compilationUnit.SourceFiles;
+        var syntaxTrees = compilationUnit.SyntaxTrees;
+        var compilation = compilationUnit.Compilation;
 
         var endpoints = new List<string>();
         var published = new List<string>();
@@ -97,27 +96,6 @@ private IReadOnlyDictionary<string, string[]> BuildRepositoryTypeIndex(List<stri
         var consumedEvidence = new List<string>();
         var codeEvidence = new List<ArchitectureEvidence>();
         var httpTargets = new List<HttpTargetCandidate>();
-        var syntaxTrees = sourceFiles.Select(sourceFile =>
-        {
-            var parseOptions = new CSharpParseOptions(LanguageVersion.Preview, DocumentationMode.Parse);
-            return CSharpSyntaxTree.ParseText(SafeRead(sourceFile), parseOptions, Relative(sourceFile));
-        }).ToArray();
-
-        CSharpCompilation compilation;
-        try
-        {
-            compilation = CSharpCompilation.Create(
-                $"CodeAtlas_{Regex.Replace(name, "[^A-Za-z0-9_]", "_")}",
-                syntaxTrees,
-                LoadMetadataReferences(projectDirectory, framework),
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
-        }
-        catch (Exception ex)
-        {
-            warnings.Add($"Semantic analysis could not initialize for {relative}: {ex.Message}");
-            compilation = CSharpCompilation.Create($"CodeAtlas_{Guid.NewGuid():N}", syntaxTrees, PlatformMetadataReferences.Value,
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        }
 
         foreach (var (sourceFile, syntaxTree) in sourceFiles.Zip(syntaxTrees))
         {
@@ -202,5 +180,81 @@ private IReadOnlyDictionary<string, string[]> BuildRepositoryTypeIndex(List<stri
                 .Select(group => group.First()).Take(100).ToArray(), Array.Empty<string>());
         var businessFlows = BusinessFlowAnalyzer.FromNextRoutes(root, relative, name, routeCandidates);
         return new ProjectDefinition(node, packageFile, businessFlows);
+    }
+
+    private ProjectCompilationUnit CreateProjectCompilation(string projectFile, string name, string? framework, string relative, List<string> warnings,
+        IReadOnlyCollection<MetadataReference>? projectReferences = null)
+    {
+        var projectDirectory = Path.GetDirectoryName(projectFile)!;
+        var sourceFiles = EnumerateFiles(projectDirectory, "*.cs").ToArray();
+        var nestedProjectDirectories = EnumerateFiles(projectDirectory, "*.csproj")
+            .Where(p => !PathTools.PathsEqual(p, projectFile))
+            .Select(p => Path.GetDirectoryName(p)).Where(p => p is not null).Cast<string>().ToArray();
+        sourceFiles = sourceFiles.Where(file => !nestedProjectDirectories.Any(dir => PathTools.IsWithin(file, dir))).Take(6000).ToArray();
+
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview, DocumentationMode.Parse);
+        var syntaxTrees = sourceFiles.Select(sourceFile =>
+            CSharpSyntaxTree.ParseText(SafeRead(sourceFile), parseOptions, Relative(sourceFile))).ToArray();
+
+        // MSBuild generates the implicit global usings under obj/ (excluded from scanning). Without them every
+        // 'Task', 'List<T>' or 'HttpClient' in an ImplicitUsings project is unresolved and semantic rules go blind.
+        // The synthetic tree joins the compilation only; callers keep iterating the real source trees.
+        var compilationTrees = syntaxTrees.AsEnumerable();
+        var implicitUsings = BuildImplicitUsingsSource(SafeRead(projectFile), projectFile);
+        if (implicitUsings is not null)
+            compilationTrees = compilationTrees.Append(CSharpSyntaxTree.ParseText(implicitUsings, parseOptions, "codeatlas.implicit-usings.g.cs"));
+
+        CSharpCompilation compilation;
+        try
+        {
+            compilation = CSharpCompilation.Create(
+                $"CodeAtlas_{Regex.Replace(name, "[^A-Za-z0-9_]", "_")}",
+                compilationTrees,
+                projectReferences is { Count: > 0 } ? LoadMetadataReferences(projectDirectory, framework).Concat(projectReferences).ToArray() : LoadMetadataReferences(projectDirectory, framework),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+        }
+        catch (Exception ex)
+        {
+            warnings.Add($"Semantic analysis could not initialize for {relative}: {ex.Message}");
+            compilation = CSharpCompilation.Create($"CodeAtlas_{Guid.NewGuid():N}", compilationTrees, PlatformMetadataReferences.Value,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        }
+
+        return new ProjectCompilationUnit(sourceFiles, syntaxTrees, compilation);
+    }
+
+    private static readonly string[] SdkImplicitUsings =
+        { "System", "System.Collections.Generic", "System.IO", "System.Linq", "System.Net.Http", "System.Threading", "System.Threading.Tasks" };
+
+    private static readonly string[] WebSdkImplicitUsings =
+    {
+        "System.Net.Http.Json", "Microsoft.AspNetCore.Builder", "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Http",
+        "Microsoft.AspNetCore.Routing", "Microsoft.Extensions.Configuration", "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting", "Microsoft.Extensions.Logging"
+    };
+
+    /// <summary>Reproduces the Microsoft.NET.Sdk ImplicitUsings feature (SDK defaults plus explicit &lt;Using&gt; items).</summary>
+    private static string? BuildImplicitUsingsSource(string projectContent, string projectFile)
+    {
+        try
+        {
+            var document = XDocument.Parse(projectContent);
+            var enabled = document.Descendants().Any(e => e.Name.LocalName == "ImplicitUsings"
+                && (e.Value.Trim().Equals("enable", StringComparison.OrdinalIgnoreCase) || e.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase)));
+            var usings = new List<string>();
+            if (enabled)
+            {
+                usings.AddRange(SdkImplicitUsings);
+                var sdk = (string?)document.Root?.Attribute("Sdk") ?? string.Empty;
+                if (sdk.Contains("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase)) usings.AddRange(WebSdkImplicitUsings);
+            }
+            foreach (var item in document.Descendants().Where(e => e.Name.LocalName == "Using"))
+            {
+                var include = (string?)item.Attribute("Include");
+                if (!string.IsNullOrWhiteSpace(include) && !include.Contains("$(", StringComparison.Ordinal)) usings.Add(include.Trim());
+            }
+            return usings.Count == 0 ? null : string.Join('\n', usings.Distinct(StringComparer.Ordinal).Select(u => $"global using global::{u};")) + "\n";
+        }
+        catch { return null; }
     }
 }
