@@ -31,7 +31,7 @@ sealed partial class RepositoryScanner
         var relative = Relative(projectFile);
         var name = Path.GetFileNameWithoutExtension(projectFile);
         var framework = DetectTargetFramework(SafeRead(projectFile));
-        var unit = CreateProjectCompilation(projectFile, name, framework, relative, warnings);
+        var unit = CreateProjectCompilation(projectFile, name, framework, relative, warnings, null, includeFrameworks: true);
         return new LoadedDotnetProject(projectFile, relative, name, unit, warnings.ToArray(), FingerprintReferences(projectFile), ReadProjectReferences(projectFile));
     }
 
@@ -111,7 +111,7 @@ sealed partial class RepositoryScanner
             var projectWarnings = new List<string>();
             var relative = Relative(file);
             var name = Path.GetFileNameWithoutExtension(file);
-            var unit = CreateProjectCompilation(file, name, DetectTargetFramework(SafeRead(file)), relative, projectWarnings, closure);
+            var unit = CreateProjectCompilation(file, name, DetectTargetFramework(SafeRead(file)), relative, projectWarnings, closure, includeFrameworks: true);
             loaded[file] = new LoadedDotnetProject(file, relative, name, unit, projectWarnings.ToArray(), FingerprintReferences(file), ReadProjectReferences(file));
         }
         warnings.AddRange(loaded.Values.SelectMany(p => p.Warnings));

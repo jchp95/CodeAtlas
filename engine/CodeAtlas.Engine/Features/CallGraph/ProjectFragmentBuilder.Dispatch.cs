@@ -65,7 +65,7 @@ sealed partial class ProjectFragmentBuilder
         return chain.Distinct(StringComparer.Ordinal).ToArray();
     }
 
-    private static IEnumerable<INamedTypeSymbol> AllSourceTypes(INamespaceSymbol ns)
+    internal static IEnumerable<INamedTypeSymbol> AllSourceTypes(INamespaceSymbol ns)
     {
         foreach (var type in ns.GetTypeMembers())
             foreach (var nested in WithNested(type)) yield return nested;

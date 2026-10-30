@@ -4,4 +4,5 @@ obj/
 *.user
 graphify-out/
 *.build
-.DS_Store
+.DS_StoreTestResults/
+*.zip

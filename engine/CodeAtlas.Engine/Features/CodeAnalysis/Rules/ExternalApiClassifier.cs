@@ -16,7 +16,8 @@ static class ExternalApiClassifier
     {
         var type = method.ContainingType;
         var ns = type.ContainingNamespace?.ToDisplayString() ?? "";
-        if (ns == "System.Net.Http" && type.Name == "HttpClient") return "HTTP";
+        // Constructing, configuring or disposing an HttpClient does not touch the network; only its operations do.
+        if (ns == "System.Net.Http" && type.Name == "HttpClient" && method.MethodKind == MethodKind.Ordinary && method.Name is not ("Dispose" or "CancelPendingRequests")) return "HTTP";
         if (ns.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) && EfTerminalOperators.Contains(method.Name)) return "Database";
         if ((ns.StartsWith("System.Data", StringComparison.Ordinal) || ns.StartsWith("Microsoft.Data", StringComparison.Ordinal))
             && method.Name.StartsWith("Execute", StringComparison.Ordinal)) return "Database";

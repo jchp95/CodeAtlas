@@ -1,3 +1,45 @@
+## Sin publicar — La app SwiftUI compila (`swift build` y `swiftc`)
+
+- Con Xcode 27.1 / Swift 6.4 activo (`xcode-select` ya apunta a `/Applications/Xcode.app`), `swift build --package-path macOSApp` termina con *Build complete* (98 s, 0 errores). El bloqueo anterior era el `libPackageDescription` desalineado de las Command Line Tools.
+
+- Corrige 6 errores de compilación Swift que impedían construir la app con el SDK instalado: `Notification.Name.codeAtlasNavigateSection` se usaba sin estar declarado; `.buttonStyle(cond ? .borderedProminent : .bordered)` no tipa (dos estilos distintos; ahora `prominentButtonStyle(_:)`); en `NativeCodeEditor`, `CGFloat.greatestFiniteMagnitude` ambiguo, `ruler` expuesto con un tipo privado (`fileprivate`) y uso implícito de `self` dentro del cierre del número de línea.
+- Nuevo `scripts/swift-compile-check.sh`: compila y enlaza los 78 archivos con `swiftc` directamente (Swift 6.3.3, macOS 14). Sirve cuando SwiftPM no puede ejecutarse.
+- `swift build` sigue fallando en este equipo **antes de compilar código**: el `libPackageDescription` de las Command Line Tools instaladas no coincide con su interfaz (incluso un manifiesto mínimo con `swift-tools-version: 5.9` no enlaza). Se resuelve reinstalando las CLT o instalando Xcode; no es un defecto del repositorio.
+
+## Sin publicar — Fase 5: profiling y diagnóstico de runtime
+
+- `profile cpu|counters|heap|compare` y `runtime doctor` sobre `dotnet-trace`, `dotnet-counters` y `dotnet-gcdump` (instalados con autorización a nivel de usuario en `~/.codeatlas/tools/dotnet-tools`, sin tocar feeds privados).
+- CPU: tiempo en CPU y tiempo bloqueado por separado, CPU propia/exclusiva/inclusiva por método, árbol de llamadas, métodos resueltos al grafo de llamadas y enlazados con hallazgos estáticos; `--repeat` para medianas y rangos. `PRF0001` marca puntos calientes sin presentarlos como defectos.
+- Contadores: distinguen tasa de asignación de retención (heap post-GC), pausas de GC, presión del thread pool (enlazada como candidata a hallazgos estáticos `ATL1001`) y contención de locks (`PRF0101`–`PRF0202`). Heap: comparación de snapshots por tipo (`PRF0301`).
+- Comparación: `regression`/`improvement` solo con ≥ 3 ejecuciones por lado y rangos disjuntos; una ejecución es `inconclusive`.
+- Perfilar exige `--allow-execution` o `--allow-attach`; cancelar mata trazador y programa lanzado; procesos adjuntados no se matan; trazas privadas y con borrado a los 14 días.
+- Validación: `scripts/profiling-test.sh` (añadido a `verify-before-launch.sh`). El build SwiftUI sigue sin poder verificarse en este equipo.
+
+## Sin publicar — Fase 4: Test Explorer, excepciones y depuración
+
+- `tests discover|related|run|compare`: descubrimiento estático (xUnit, NUnit, MSTest; omitidas y filas de datos), ejecución real con `dotnet test` + TRX (solo el TRX decide los resultados), selección por pruebas relacionadas con un símbolo o por fallidas de un informe, comparación entre ejecuciones y cobertura con coverlet. Ejecutar exige `--allow-execution`; compilación fallida o *timeout* se informan como tales y las pruebas no ejecutadas se listan en `notRun`.
+- `exceptions resolve`: trazas de pila resueltas contra el grafo (excepciones internas, máquinas `async`, lambdas, ambigüedad explícita), con llamadores, flujos, pruebas y `catch` que tragan la excepción.
+- `debug doctor|run|timeline`: sesiones reales de depuración sobre netcoredbg 3.2.0 por DAP (breakpoints condicionales, función, excepciones al lanzarse/no controladas, pasos, variables con redacción de secretos, evaluación, adjuntado local con `--allow-attach`). Parones con marcos resueltos al grafo y análisis de la excepción. `--record` conserva solo lo capturado.
+- Hallazgos nuevos `TST0001`, `TST0002`, `ATL4001` (origen `test`/`dynamic`, validación `runtimeObserved`).
+- El grafo etiqueta métodos de prueba con framework, filas de datos y motivo de omisión (versión de caché 1.1.0).
+- Instalado con autorización: netcoredbg en `~/.codeatlas/tools/netcoredbg` (nivel de usuario). Nuevo `PathTools.Canonical` (resuelve enlaces simbólicos).
+- Validación: `scripts/testing-test.sh` y `scripts/debugging-test.sh` (añadidos a `verify-before-launch.sh`). El build SwiftUI sigue sin poder verificarse en este equipo.
+
+## Sin publicar — Fase 3: grafo de llamadas, arquitectura e impacto
+
+- Nuevo módulo `Features/CallGraph`: grafo de llamadas semántico construido con símbolos e `IOperation` de Roslyn. Clasifica cada arista (`direct`, `interfaceDispatch`, `virtualDispatch`, `delegate`, `lambda`, `extensionMethod`, `objectCreation`, `propertyAccess`, `mediatorDispatch`, `syntaxInferred`, `unresolved`) y su certeza (`proven`, `potential`, `unknown`). Los destinos desconocidos son aristas explícitas; el grafo solo se declara cerrado si no hay ninguno.
+- Identidad de nodos basada en proyecto + símbolo (sin líneas); documentada la política de renombrados, espacios de nombres, parciales y lambdas.
+- Compilaciones enlazadas por `ProjectReference` para resolver llamadas entre proyectos (el escaneo de arquitectura no cambia).
+- Caché por proyecto de fragmentos con clave que incluye los proyectos referenciados transitivamente; límites explícitos (abanico de despacho, nodos, aristas, profundidad), cancelación cooperativa y métricas.
+- Ciclos de proyectos, de llamadas (la recursión legítima no genera hallazgo) y de capas; reglas arquitectónicas configurables en `codeatlas.architecture.json` (sin convención impuesta, excepciones con motivo obligatorio). Todo como hallazgos de `Features/Findings`.
+- `impact`: consumidores demostrados y potenciales, implementaciones, contratos, pruebas, flujos, proyectos, capas y riesgos; selección por id estable, posición o nombre, con devolución de coincidencias si es ambiguo; nunca se presenta como exhaustivo si no lo es.
+- `graph analyze`: ATL3101–ATL3105 (bloqueo desde async, remoto en bucles indirectos, cancelación perdida, fábricas desechables, nulos anulables).
+- `graph flows`: proyección del grafo al contrato `BusinessFlow`; `BusinessFlowAnalyzer` expone su descubrimiento de puntos de entrada y una prueba exige que no se pierdan pasos resolubles del trazador heredado.
+- Nuevos comandos: `graph build|calls|cycles|flows|analyze`, `architecture-rules`, `architecture-check`, `impact`. `analyze`, `analysis-rules`, `fix` y `scan` no cambian.
+- Los proyectos Web (`Microsoft.NET.Sdk.Web` o `FrameworkReference Microsoft.AspNetCore.App`) enlazan ahora con el targeting pack de ASP.NET Core instalado: `MapGet`, `Results`, `WebApplication`… no figuran en `project.assets.json` y quedaban sin resolver aunque se hubiera hecho `dotnet restore`. Aplica al grafo y al analizador Roslyn; el escaneo de arquitectura conserva sus referencias.
+- Refactor menor de Fase 2: `ExternalApiClassifier` y `DisposalFlow` compartidos; HttpClient solo se considera remoto en sus operaciones (no en constructor ni `Dispose`).
+- Validación: `scripts/call-graph-test.sh` (añadido a `verify-before-launch.sh`) y las suites previas. La compilación SwiftUI sigue sin poder verificarse en este equipo. Documentación: `docs/CALL_GRAPH.md`; plan de la Fase 4 en `docs/PHASE_4_PLAN.md`.
+
 ## Sin publicar — Fases 1–2 del IDE de ingeniería basada en evidencias
 
 - Auditoría del IDE (`docs/IDE_AUDIT.md`): matriz de capacidades con estado real, brechas, riesgos, arquitectura objetivo y plan por fases con criterios de aceptación.

@@ -67,3 +67,8 @@ A selected folder may contain separate Git repositories, one per service. `GitWo
 Auto-refresh fingerprints include file content for dirty and untracked paths, not only the Git status string. This catches edits to a file that was already modified before the last poll. Files up to 8 MiB use SHA-256 over the full content; larger files use bounded first/last samples plus size and modification time to limit polling cost. Non-Git workspaces use an excluded-directory-aware file walk.
 
 Nested repositories are independent Git histories. Their branch and HEAD values are recorded separately; the synthetic workspace commit is a stable hash of their path/branch/HEAD tuple and should not be interpreted as a Git commit.
+
+
+## Grafo de llamadas (Fase 3)
+
+El escaneo sigue compilando cada proyecto de forma aislada. El grafo de llamadas, el análisis de impacto y las reglas interprocedimentales usan compilaciones enlazadas por `ProjectReference` y están documentados en `CALL_GRAPH.md`; el trazador de flujos de este documento se mantiene y una prueba comprueba que la proyección de flujos del grafo no pierda sus pasos resolubles.

@@ -47,6 +47,7 @@ sealed partial class ProjectFragmentBuilder
                     break;
                 case IInvalidOperation invalid when invalid.Syntax is InvocationExpressionSyntax syntax:
                     AddEdgeUnresolved(owner, syntax, flags);
+                    TrySyntaxFallback(owner, syntax, flags);
                     break;
                 case IReturnOperation { ReturnedValue: { } returned } when returned.Unwrap() is IObjectCreationOperation { Type: { } createdType }
                                                                          && createdType.ImplementsDisposable() && !createdType.IsTaskLike():
@@ -102,7 +103,8 @@ sealed partial class ProjectFragmentBuilder
             resolution = target.ContainingType.TypeKind == TypeKind.Interface ? EdgeResolution.InterfaceDispatch : EdgeResolution.VirtualDispatch;
             receiverType = invocation.Instance?.Type is { } type ? identity.TypeId(type) : null;
         }
-        AddResolved(owner, target, resolution, invocation, flags, passesToken, receiverType);
+        AddResolved(owner, target, resolution, invocation, flags, passesToken, receiverType, resultNotDisposed: ResultLeaks(invocation));
+        TryMediator(owner, invocation, flags);
     }
 
     private static bool IsExtensionCall(IInvocationOperation invocation) =>
@@ -139,7 +141,7 @@ sealed partial class ProjectFragmentBuilder
     }
 
     private void AddResolved(GraphNode owner, IMethodSymbol target, EdgeResolution resolution, IOperation operation, Flags flags,
-        bool passesToken, string? receiverTypeId, EdgeCertainty certainty = EdgeCertainty.Proven)
+        bool passesToken, string? receiverTypeId, EdgeCertainty certainty = EdgeCertainty.Proven, bool resultNotDisposed = false)
     {
         var canonical = (IMethodSymbol)GraphIdentity.Canonical(target);
         var targetId = SymbolIdOf(canonical);
@@ -149,7 +151,7 @@ sealed partial class ProjectFragmentBuilder
         var dispatchKind = resolution is EdgeResolution.InterfaceDispatch or EdgeResolution.VirtualDispatch;
         var openWorld = dispatchKind && (!identity.IsSource(canonical) || ExternallyVisible(canonical));
         AddEdge(owner, targetId, resolution, ToLocation(operation.Syntax.GetLocation()), flags.InLoop, flags.InTry, passesToken,
-            AcceptsToken(canonical), openWorld, receiverTypeId, null, certainty);
+            AcceptsToken(canonical), openWorld, receiverTypeId, null, certainty, resultNotDisposed: resultNotDisposed);
     }
 
     private void AddEdgeUnresolved(GraphNode owner, InvocationExpressionSyntax syntax, Flags flags)
@@ -160,14 +162,15 @@ sealed partial class ProjectFragmentBuilder
     }
 
     private void AddEdge(GraphNode owner, string? targetSymbolId, EdgeResolution resolution, GraphLocation site, bool inLoop, bool inTry, bool passesToken,
-        bool acceptsToken, bool openWorld, string? receiverTypeId, string? reason, EdgeCertainty certainty = EdgeCertainty.Proven, string? label = null)
+        bool acceptsToken, bool openWorld, string? receiverTypeId, string? reason, EdgeCertainty certainty = EdgeCertainty.Proven, string? label = null,
+        bool resultNotDisposed = false)
     {
         var siteKey = $"{owner.Id}|{targetSymbolId ?? label}|{resolution}";
         var ordinal = siteOrdinals.GetValueOrDefault(siteKey);
         siteOrdinals[siteKey] = ordinal + 1;
         var siteId = "S-" + GraphIdentity.StableHash($"{siteKey}|{ordinal}");
         edges.Add(new RawEdge(owner.Id, targetSymbolId, resolution, certainty, siteId, site, inLoop, inTry, passesToken, acceptsToken, openWorld,
-            receiverTypeId, label, reason));
+            receiverTypeId, label, reason, resultNotDisposed));
     }
 
     private bool AcceptsToken(IMethodSymbol target)

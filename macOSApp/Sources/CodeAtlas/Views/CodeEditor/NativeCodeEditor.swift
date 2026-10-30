@@ -36,7 +36,7 @@ struct NativeCodeEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = false
         textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.delegate = context.coordinator
         textView.string = text
         CodeSyntaxHighlighter.apply(to: textView, language: language)
@@ -92,7 +92,7 @@ struct NativeCodeEditor: NSViewRepresentable {
         @Binding private var text: String
         @Binding private var caretOffset: Int
         weak var textView: NSTextView?
-        weak var ruler: CodeLineNumberRulerView?
+        fileprivate weak var ruler: CodeLineNumberRulerView?
         var lastTargetLine: Int
         var lastCaretOffset: Int
         var currentLanguage: String
@@ -154,6 +154,7 @@ private final class CodeLineNumberRulerView: NSRulerView {
         let visible = convert(textView.visibleRect, from: textView)
         let glyphRange = layoutManager.glyphRange(forBoundingRect: visible, in: textContainer)
         var currentLine = 1
+        let rulerWidth = bounds.width
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
             .foregroundColor: NSColor.tertiaryLabelColor
@@ -165,7 +166,7 @@ private final class CodeLineNumberRulerView: NSRulerView {
             let label = String(currentLine) as NSString
             let size = label.size(withAttributes: attributes)
             let y = lineRect.minY + textView.textContainerOrigin.y + textView.textContainerInset.height
-            label.draw(at: NSPoint(x: bounds.width - size.width - 8, y: y), withAttributes: attributes)
+            label.draw(at: NSPoint(x: rulerWidth - size.width - 8, y: y), withAttributes: attributes)
         }
     }
 }

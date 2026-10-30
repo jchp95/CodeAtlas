@@ -311,7 +311,7 @@ struct ContentView: View {
             Button { withAnimation(.snappy(duration: 0.2)) { showBuildConsole.toggle() } } label: {
                 Label("Build", systemImage: "hammer")
             }
-            .buttonStyle(showBuildConsole ? .borderedProminent : .bordered)
+            .prominentButtonStyle(showBuildConsole)
             .controlSize(.regular)
             .help("Abrir consola de compilación y pruebas · ⌘⇧B")
 
@@ -334,5 +334,17 @@ struct ContentView: View {
         .padding(.horizontal, 26)
         .padding(.vertical, 15)
         .background(.ultraThinMaterial)
+    }
+}
+
+extension Notification.Name {
+    /// Posted with the destination section title as `object`; ContentView switches to that section.
+    static let codeAtlasNavigateSection = Notification.Name("codeAtlasNavigateSection")
+}
+
+extension View {
+    /// `.buttonStyle(cond ? .borderedProminent : .bordered)` does not type-check (two different style types), so the choice is made on the view.
+    @ViewBuilder func prominentButtonStyle(_ prominent: Bool) -> some View {
+        if prominent { buttonStyle(.borderedProminent) } else { buttonStyle(.bordered) }
     }
 }

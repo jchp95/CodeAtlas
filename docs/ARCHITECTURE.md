@@ -11,6 +11,10 @@
 7. **ArchitectureRuntimeLinker** — enlaza un proyecto fuente con una plantilla de ejecución a partir de la raíz de workspace, el argumento `.csproj`, el directorio de un package o un nombre único. No crea ni edita configuraciones automáticamente; rechaza empates ambiguos.
 8. **HTTP Endpoint Explorer** — catálogo efímero de endpoints de código, peticiones `.http` / `.rest`, entornos Rider/REST Client y llamadas HTTP salientes; permite ejecutar solicitudes y generar archivos `.http`.
 
+9. **Findings** (`Features/Findings`) — contrato común de hallazgos (id estable, nivel de validación, evidencias, limitaciones, reproducción, corrección opcional) usado por el análisis Roslyn, el grafo y las reglas arquitectónicas. Ver `docs/CODE_ANALYSIS.md`.
+10. **Code analysis** (`Features/CodeAnalysis`) — reglas Roslyn por documento con caché por proyecto y correcciones con diff previo.
+11. **Call graph** (`Features/CallGraph`, `Features/Architecture/Rules`) — grafo de llamadas semántico por solución, ciclos, reglas de arquitectura configurables, impacto de cambios, reglas interprocedimentales y flujos proyectados. Comparte con el escaneo la carga de proyectos y el descubrimiento de puntos de entrada; ver `docs/CALL_GRAPH.md`.
+
 ## Modelo de arquitectura
 
 - `ProjectNode`: proyecto .NET o package Node/Next; rutas/endpoints, paquetes, referencias, contratos candidatos, URLs HTTP, direcciones de escucha y evidencia de código (símbolo, archivo, línea, categoría y confianza).

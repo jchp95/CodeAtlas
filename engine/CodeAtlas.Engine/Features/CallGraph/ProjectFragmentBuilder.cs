@@ -10,12 +10,6 @@ using Microsoft.CodeAnalysis.Operations;
 /// </summary>
 sealed partial class ProjectFragmentBuilder
 {
-    private static readonly HashSet<string> TestAttributes = new(StringComparer.Ordinal)
-    {
-        "Fact", "Theory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod", "FactAttribute", "TheoryAttribute",
-        "TestAttribute", "TestMethodAttribute"
-    };
-
     private readonly LoadedDotnetProject project;
     private readonly string projectKey;
     private readonly GraphIdentity identity;
@@ -30,6 +24,8 @@ sealed partial class ProjectFragmentBuilder
     private readonly Dictionary<string, bool> acceptsTokenCache = new(StringComparer.Ordinal);
     private readonly HashSet<string> disposableCreators = new(StringComparer.Ordinal);
     private readonly List<string> warnings = new();
+    private readonly List<NullFlow> nullFlows = new();
+    private Dictionary<SyntaxTree, SemanticModel> models = new();
     private readonly Dictionary<string, (bool IsStatic, INamedTypeSymbol Type)> typesWithInitializers = new(StringComparer.Ordinal);
 
     public ProjectFragmentBuilder(string repositoryRoot, LoadedDotnetProject project, string projectKey, GraphIdentity identity,
@@ -47,12 +43,17 @@ sealed partial class ProjectFragmentBuilder
 
     public ProjectFragment Build()
     {
-        var models = project.Unit.SyntaxTrees.ToDictionary(tree => tree, tree => Compilation.GetSemanticModel(tree, ignoreAccessibility: true));
+        models = project.Unit.SyntaxTrees.ToDictionary(tree => tree, tree => Compilation.GetSemanticModel(tree, ignoreAccessibility: true));
         foreach (var (tree, model) in models)
         {
             cancellation.ThrowIfCancellationRequested();
             DeclareMembers(tree, model);
+            CollectNullFlows(tree, model);
         }
+        // Implicit default and primary constructors have no declaration syntax to visit but are real call targets.
+        foreach (var type in AllSourceTypes(Compilation.Assembly.GlobalNamespace))
+            foreach (var constructor in type.InstanceConstructors.Concat(type.StaticConstructors).Where(c => c.Locations.Any(l => l.IsInSource) || c.IsImplicitlyDeclared))
+                EnsureNode(constructor);
         LinkInitializers();
 
         var entries = DiscoverEntryPoints(models);
@@ -69,7 +70,7 @@ sealed partial class ProjectFragmentBuilder
 
         return new ProjectFragment(projectKey,
             nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal).ToArray(), edges.ToArray(),
-            implementations, overrides, entries.ToArray(), warnings.ToArray());
+            implementations, overrides, CollectHandlers(), entries.ToArray(), warnings.ToArray(), nullFlows.OrderBy(n => n.Use.File, StringComparer.Ordinal).ThenBy(n => n.Use.Line).ToArray());
     }
 
     private void DeclareMembers(SyntaxTree tree, SemanticModel model)

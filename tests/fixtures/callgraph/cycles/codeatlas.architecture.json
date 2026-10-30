@@ -1,0 +1,7 @@
+{
+  "layers": [
+    { "name": "Alpha", "projects": ["Cyc.A"] },
+    { "name": "Beta",  "projects": ["Cyc.B"] }
+  ],
+  "rules": [ { "id": "acyclic", "type": "noCycles", "scope": "layers", "severity": "error" } ]
+}

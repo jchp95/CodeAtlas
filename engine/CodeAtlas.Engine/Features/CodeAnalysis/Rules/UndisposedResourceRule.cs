@@ -8,7 +8,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 /// </summary>
 sealed class UndisposedResourceRule : ICodeRule
 {
-    private static readonly HashSet<string> DisposeMethods = new(StringComparer.Ordinal) { "Dispose", "DisposeAsync", "Close", "CloseAsync" };
     // Disposal of these is a no-op for correctness (no unmanaged state); flagging them is noise.
     private static readonly HashSet<string> ManagedOnly = new(StringComparer.Ordinal) { "MemoryStream", "StringReader", "StringWriter", "Task", "ValueTask" };
 
@@ -32,8 +31,7 @@ sealed class UndisposedResourceRule : ICodeRule
                 if (!type.ImplementsDisposable() || ManagedOnly.Contains(type.Name)) continue;
                 if (context.Model.GetDeclaredSymbol(declarator, context.Cancellation) is not ILocalSymbol local) continue;
 
-                var verdict = Classify(context, scope, local);
-                if (verdict != Usage.Leaks) continue;
+                if (!DisposalFlow.Leaks(context.Model, scope, local, context.Cancellation)) continue;
 
                 context.Report(declarator,
                     $"'{local.Name}' ({type.Name}) is created but never disposed",
@@ -51,38 +49,5 @@ sealed class UndisposedResourceRule : ICodeRule
                     discriminator: declarator.ToString());
             }
         }
-    }
-
-    private enum Usage { Leaks, DisposedOrEscapes }
-
-    private static Usage Classify(RuleContext context, SyntaxNode scope, ILocalSymbol local)
-    {
-        foreach (var identifier in scope.DescendantNodes().OfType<IdentifierNameSyntax>())
-        {
-            if (identifier.Identifier.ValueText != local.Name) continue;
-            if (!SymbolEqualityComparer.Default.Equals(context.Model.GetSymbolInfo(identifier, context.Cancellation).Symbol, local)) continue;
-
-            var parent = identifier.Parent;
-            switch (parent)
-            {
-                case MemberAccessExpressionSyntax access when access.Expression == identifier:
-                    if (DisposeMethods.Contains(access.Name.Identifier.ValueText)) return Usage.DisposedOrEscapes;
-                    continue; // x.Foo(): an ordinary use that keeps ownership local.
-                case ConditionalAccessExpressionSyntax conditional when conditional.Expression == identifier:
-                    if (conditional.WhenNotNull.DescendantNodesAndSelf().OfType<MemberBindingExpressionSyntax>()
-                        .Any(binding => DisposeMethods.Contains(binding.Name.Identifier.ValueText))) return Usage.DisposedOrEscapes;
-                    continue;
-                case UsingStatementSyntax:
-                    return Usage.DisposedOrEscapes;
-                case ElementAccessExpressionSyntax:
-                    continue;
-                case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator } when declarator.Identifier.ValueText == local.Name:
-                    continue;
-                default:
-                    // Argument, return, assignment source, initializer, lambda capture, tuple, etc.: ownership may transfer.
-                    return Usage.DisposedOrEscapes;
-            }
-        }
-        return Usage.Leaks;
     }
 }

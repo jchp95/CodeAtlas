@@ -1,0 +1,22 @@
+{
+  // Layers are matched by project name or namespace. Nothing here is a built-in convention: the team decides.
+  "layers": [
+    { "name": "Domain",         "projects": ["Shop.Domain"],         "namespaces": ["Shop.Domain*"] },
+    { "name": "Infrastructure", "projects": ["Shop.Infrastructure"], "namespaces": ["Shop.Infrastructure*"] },
+    { "name": "Application",    "projects": ["Shop.Application"],    "namespaces": ["Shop.Application*"] },
+    { "name": "Presentation",   "projects": ["Shop.Web"],            "namespaces": ["Shop.Web*"] }
+  ],
+  "rules": [
+    { "id": "domain-isolated", "type": "forbidden", "from": "Domain", "to": ["Application", "Infrastructure", "Presentation"], "severity": "error",
+      "reason": "The domain must not know about outer layers." },
+    { "id": "app-no-infra", "type": "forbidden", "from": "Application", "to": "Infrastructure", "severity": "error",
+      "reason": "Application depends on abstractions owned by the domain, not on infrastructure." },
+    { "id": "web-allowed", "type": "allowedOnly", "from": "Presentation", "to": ["Application", "Domain"], "severity": "warning" },
+    { "id": "billing-shipping", "type": "forbiddenProjects", "from": "Shop.Billing*", "to": "Shop.Shipping*" },
+    { "id": "acyclic-layers", "type": "noCycles", "scope": "layers", "severity": "error" }
+  ],
+  "exceptions": [
+    { "rule": "web-allowed", "from": "Shop.Web.Startup", "to": "Shop.Infrastructure*", "reason": "Startup is the composition root and wires infrastructure." },
+    { "rule": "web-allowed", "from": "Shop.Web", "to": "Shop.Infrastructure", "reason": "The web project references infrastructure to register it." }
+  ]
+}

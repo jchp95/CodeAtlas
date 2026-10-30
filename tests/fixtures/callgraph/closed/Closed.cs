@@ -1,8 +1,9 @@
 namespace Closed;
 
-public class Calculator
+// Everything is internal and statically bound, so the whole graph can be enumerated.
+internal class Calculator
 {
-    public int Add(int a, int b) => a + b;
-    public int AddTwice(int a, int b) => Add(Add(a, b), b);
-    public string Describe(int a) => string.Concat("value ", a.ToString());
+    internal int Add(int a, int b) => a + b;
+    internal int AddTwice(int a, int b) => Add(Add(a, b), b);
+    internal string Describe(int a) => string.Concat("value ", a.ToString());
 }

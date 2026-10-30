@@ -4,7 +4,7 @@ sealed class CallGraphAssembler
     private readonly GraphLimits limits;
     public CallGraphAssembler(GraphLimits limits) => this.limits = limits;
 
-    public sealed record Result(GraphNode[] Nodes, GraphEdge[] Edges, GraphEntryPoint[] EntryPoints, GraphLimitNote[] LimitNotes, string[] Warnings, bool HitHardLimit)
+    public sealed record Result(GraphNode[] Nodes, GraphEdge[] Edges, GraphEntryPoint[] EntryPoints, DispatchEntry[] Dispatch, NullFlow[] NullFlows, GraphLimitNote[] LimitNotes, string[] Warnings, bool HitHardLimit)
     {
         public GraphCompleteness Completeness(bool cancelled)
         {
@@ -32,6 +32,8 @@ sealed class CallGraphAssembler
         var overrides = fragments.SelectMany(f => f.Overrides).GroupBy(p => p.Declared, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.DistinctBy(p => p.Implementation).ToArray(), StringComparer.Ordinal);
 
+        var handlers = fragments.SelectMany(f => f.Handlers).GroupBy(p => p.Declared, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.DistinctBy(p => p.Implementation).ToArray(), StringComparer.Ordinal);
         var edges = new List<GraphEdge>();
         var notes = new List<GraphLimitNote>();
         var warnings = new List<string>();
@@ -60,6 +62,13 @@ sealed class CallGraphAssembler
                 break;
             }
 
+            if (raw.Resolution == EdgeResolution.MediatorDispatch)
+            {
+                // Only request types with a known IRequestHandler implementation produce an edge; a Send without one stays just a call.
+                foreach (var handler in (handlers.GetValueOrDefault(raw.ReceiverTypeId ?? "") ?? Array.Empty<DispatchPair>()).OrderBy(h => h.Implementation, StringComparer.Ordinal))
+                    edges.Add(Edge(raw, NodeFor(handler.Implementation), EdgeResolution.MediatorDispatch, EdgeCertainty.Potential, false));
+                continue;
+            }
             if (raw.Target is null)
             {
                 edges.Add(Edge(raw, null, raw.Resolution, raw.Certainty, false));
@@ -103,7 +112,27 @@ sealed class CallGraphAssembler
 
         return new Result(nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal).ToArray(),
             edges.OrderBy(e => e.From, StringComparer.Ordinal).ThenBy(e => e.SiteId, StringComparer.Ordinal).ThenBy(e => e.To, StringComparer.Ordinal).ToArray(),
-            entryPoints, notes.ToArray(), warnings.ToArray(), hitHardLimit);
+            entryPoints, DispatchTable(implementations, overrides, nodes), fragments.SelectMany(f => f.NullFlows).ToArray(), notes.ToArray(), warnings.ToArray(), hitHardLimit);
+    }
+
+    private static DispatchEntry[] DispatchTable(Dictionary<string, DispatchPair[]> implementations, Dictionary<string, DispatchPair[]> overrides, Dictionary<string, GraphNode> nodes)
+    {
+        var declared = implementations.Keys.Concat(overrides.Keys).Distinct(StringComparer.Ordinal);
+        var entries = new List<DispatchEntry>();
+        foreach (var key in declared.OrderBy(k => k, StringComparer.Ordinal))
+        {
+            var targets = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var pair in implementations.GetValueOrDefault(key) ?? Array.Empty<DispatchPair>())
+            {
+                targets.Add(pair.Implementation);
+                foreach (var overriding in overrides.GetValueOrDefault(pair.Implementation) ?? Array.Empty<DispatchPair>()) targets.Add(overriding.Implementation);
+            }
+            foreach (var pair in overrides.GetValueOrDefault(key) ?? Array.Empty<DispatchPair>()) targets.Add(pair.Implementation);
+            var declaredNode = GraphIdentity.NodeId(key);
+            var sourceTargets = targets.Select(GraphIdentity.NodeId).Where(nodes.ContainsKey).ToArray();
+            if (nodes.ContainsKey(declaredNode) && sourceTargets.Length > 0) entries.Add(new DispatchEntry(declaredNode, sourceTargets));
+        }
+        return entries.ToArray();
     }
 
     /// <summary>All implementations/overrides known for the declared member, restricted to types compatible with the receiver's static type.</summary>
@@ -127,7 +156,7 @@ sealed class CallGraphAssembler
 
     private static GraphEdge Edge(RawEdge raw, string? to, EdgeResolution resolution, EdgeCertainty certainty, bool truncated) =>
         new("E-" + GraphIdentity.StableHash($"{raw.From}|{to}|{raw.SiteId}|{resolution}"), raw.From, to, resolution, certainty, raw.SiteId, raw.Site,
-            raw.InLoop, raw.InTry, raw.PassesToken, raw.TargetAcceptsToken, raw.OpenWorld, truncated, raw.Label, raw.Reason);
+            raw.InLoop, raw.InTry, raw.PassesToken, raw.TargetAcceptsToken, raw.OpenWorld, truncated, raw.Label, raw.Reason, raw.ResultNotDisposed);
 
     private static GraphNode Merge(GraphNode a, GraphNode b)
     {

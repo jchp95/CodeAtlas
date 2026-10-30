@@ -183,7 +183,7 @@ private IReadOnlyDictionary<string, string[]> BuildRepositoryTypeIndex(List<stri
     }
 
     private ProjectCompilationUnit CreateProjectCompilation(string projectFile, string name, string? framework, string relative, List<string> warnings,
-        IReadOnlyCollection<MetadataReference>? projectReferences = null)
+        IReadOnlyCollection<MetadataReference>? projectReferences = null, bool includeFrameworks = false)
     {
         var projectDirectory = Path.GetDirectoryName(projectFile)!;
         var sourceFiles = EnumerateFiles(projectDirectory, "*.cs").ToArray();
@@ -210,7 +210,8 @@ private IReadOnlyDictionary<string, string[]> BuildRepositoryTypeIndex(List<stri
             compilation = CSharpCompilation.Create(
                 $"CodeAtlas_{Regex.Replace(name, "[^A-Za-z0-9_]", "_")}",
                 compilationTrees,
-                projectReferences is { Count: > 0 } ? LoadMetadataReferences(projectDirectory, framework).Concat(projectReferences).ToArray() : LoadMetadataReferences(projectDirectory, framework),
+                LoadMetadataReferences(projectDirectory, framework).Concat(projectReferences ?? Array.Empty<MetadataReference>())
+                    .Concat(includeFrameworks ? LoadFrameworkReferences(SafeRead(projectFile), framework) : Array.Empty<MetadataReference>()).ToArray(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
         }
         catch (Exception ex)

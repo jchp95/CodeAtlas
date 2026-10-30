@@ -3,18 +3,29 @@ using Microsoft.CodeAnalysis.Operations;
 
 sealed partial class ProjectFragmentBuilder
 {
+    private static readonly SymbolDisplayFormat SignatureFormat = new(
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameOnly,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeParameters,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
+    private readonly Dictionary<IMethodSymbol, GraphNode> nodeBySymbol = new(SymbolEqualityComparer.Default);
+
     private GraphNode EnsureNode(IMethodSymbol symbol)
     {
+        if (nodeBySymbol.TryGetValue(symbol, out var known)) return known;
         var symbolId = SymbolIdOf(symbol);
         var id = GraphIdentity.NodeId(symbolId);
-        if (nodes.TryGetValue(id, out var existing)) return existing;
+        if (nodes.TryGetValue(id, out var existing)) return nodeBySymbol[symbol] = existing;
 
         var canonical = (IMethodSymbol)GraphIdentity.Canonical(symbol);
         var isSource = identity.IsSource(canonical);
         var locations = SourceLocations(canonical);
         var node = new GraphNode(
             id, symbolId, KindOf(canonical), isSource ? identity.ProjectOf(canonical) : "(external)",
-            canonical.Name, canonical.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat),
+            canonical.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor ? canonical.ContainingType.Name : canonical.Name,
+            canonical.ToDisplayString(SignatureFormat),
             canonical.ContainingType?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
             canonical.ContainingNamespace?.ToDisplayString(),
             canonical.DeclaredAccessibility.ToString().ToLowerInvariant(), !isSource, canonical.IsAbstract,
@@ -22,6 +33,7 @@ sealed partial class ProjectFragmentBuilder
             locations.FirstOrDefault(), locations.Length > 1 ? locations.Skip(1).ToArray() : null,
             EndLineOf(canonical));
         nodes[id] = node;
+        nodeBySymbol[symbol] = node;
         return node;
     }
 
@@ -56,7 +68,15 @@ sealed partial class ProjectFragmentBuilder
         return node;
     }
 
+    private readonly Dictionary<IMethodSymbol, string> symbolIds = new(SymbolEqualityComparer.Default);
+
     private string SymbolIdOf(IMethodSymbol symbol)
+    {
+        if (symbolIds.TryGetValue(symbol, out var cached)) return cached;
+        return symbolIds[symbol] = ComputeSymbolId(symbol);
+    }
+
+    private string ComputeSymbolId(IMethodSymbol symbol)
     {
         if (symbol.MethodKind == MethodKind.LocalFunction)
         {
@@ -85,7 +105,7 @@ sealed partial class ProjectFragmentBuilder
         if (method.Parameters.Any(p => p.Type.IsCancellationToken())) tags.Add("token-param");
         if (isSource)
         {
-            if (method.GetAttributes().Any(a => a.AttributeClass is { } c && TestAttributes.Contains(c.Name))) tags.Add("test");
+            AddTestTags(method, tags);
             if (method.IsImplicitlyDeclared) tags.Add("implicit");
         }
         else
@@ -94,6 +114,40 @@ sealed partial class ProjectFragmentBuilder
             if (ExternalApiClassifier.Remote(method) is { } remote) tags.Add("remote:" + remote);
         }
         return tags.ToArray();
+    }
+
+    /// <summary>
+    /// Test methods are recognized by the resolved attribute class: "test", "test:&lt;framework&gt;", "test-cases:N" (data rows declared
+    /// by attributes) and "test-skip:&lt;reason&gt;". Data supplied by a method or file (MemberData, TestCaseSource) is not counted.
+    /// </summary>
+    private static void AddTestTags(IMethodSymbol method, SortedSet<string> tags)
+    {
+        var cases = 0;
+        string? skip = null;
+        foreach (var attribute in method.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.Name;
+            if (name is null) continue;
+            if (name.EndsWith("Attribute", StringComparison.Ordinal)) name = name[..^"Attribute".Length];
+            switch (name)
+            {
+                case "Fact" or "Theory":
+                    tags.Add("test"); tags.Add("test:xunit");
+                    if (attribute.NamedArguments.FirstOrDefault(a => a.Key == "Skip").Value.Value is string reason) skip = reason;
+                    break;
+                case "Test" or "TestCase" or "TestCaseSource":
+                    tags.Add("test"); tags.Add("test:nunit");
+                    if (name == "TestCase") cases++;
+                    break;
+                case "TestMethod" or "DataTestMethod":
+                    tags.Add("test"); tags.Add("test:mstest");
+                    break;
+                case "InlineData" or "DataRow": cases++; break;
+                case "Ignore": skip = attribute.ConstructorArguments.FirstOrDefault().Value as string ?? "ignored"; break;
+            }
+        }
+        if (tags.Contains("test") && cases > 0) tags.Add($"test-cases:{cases}");
+        if (tags.Contains("test") && skip is not null) tags.Add($"test-skip:{skip}");
     }
 
     private GraphLocation[] SourceLocations(IMethodSymbol symbol)

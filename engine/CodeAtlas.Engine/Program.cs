@@ -18,6 +18,10 @@ CodeAtlas.Engine
   http-file-run <repository-path> <relative-http-file> <request-index> <environment-name> <overrides-base64>
   analyze <repository-path> [--no-cache] [--rules ATL1001,ATL1003] [--max-parallelism N]
   analysis-rules
+  runtime doctor, profile cpu|counters|heap|compare (see docs/PROFILING.md)
+  debug doctor | debug run (see docs/DEBUGGING.md)
+  tests discover|related|run|compare, exceptions resolve (see docs/TESTING_AND_EXCEPTIONS.md)
+  graph build|calls|cycles|flows|analyze, architecture-rules, architecture-check, impact (see docs/CALL_GRAPH.md)
   fix <repository-path> <finding-id> [--apply [--base-hash HASH]]
   stackpilot <status|init|enable|disable|start|stop|start-profile|stop-profile|logs> [options]
 """;
@@ -47,6 +51,14 @@ switch (args[0].ToLowerInvariant())
         Console.Write(JsonSerializer.Serialize(report, jsonOptions));
         return report.Cancelled ? 130 : 0;
     }
+    case "graph" or "impact" or "architecture-rules" or "architecture-check":
+        return GraphCommands.Run(args[0].ToLowerInvariant(), args.Skip(1).ToArray());
+    case "runtime" or "profile":
+        return ProfilingCommands.Run(args[0].ToLowerInvariant(), args.Skip(1).ToArray());
+    case "debug":
+        return DebugCommands.Run(args.Skip(1).ToArray());
+    case "tests" or "exceptions":
+        return TestingCommands.Run(args[0].ToLowerInvariant(), args.Skip(1).ToArray());
     case "analysis-rules":
         Console.Write(JsonSerializer.Serialize(CodeAnalysisEngine.Descriptors, jsonOptions));
         return 0;

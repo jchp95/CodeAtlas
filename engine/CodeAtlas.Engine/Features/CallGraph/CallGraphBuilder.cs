@@ -11,7 +11,7 @@ sealed record CallGraphOptions(GraphLimits Limits, bool UseCache = true, int? Ma
 sealed class CallGraphBuilder
 {
     /// <summary>Bumped whenever extraction or assembly semantics change so cached fragments are discarded.</summary>
-    public const string Version = "1.0.0";
+    public const string Version = "1.1.0";
 
     private readonly string root;
     private readonly CallGraphOptions options;
@@ -84,7 +84,8 @@ sealed class CallGraphBuilder
             assembled.Completeness(cancelled), keys.Values.OrderBy(k => k, StringComparer.Ordinal).ToArray(),
             loaded.OrderBy(p => keys[p.ProjectFile], StringComparer.Ordinal)
                 .Select(p => new[] { keys[p.ProjectFile] }.Concat(p.ProjectReferences.Select(r => ProjectKeyForRelative(loaded, keys, r))).ToArray()).ToArray(),
-            assembled.Nodes, assembled.Edges, assembled.EntryPoints, assembled.LimitNotes, metrics, warnings.Distinct(StringComparer.Ordinal).ToArray());
+            loaded.ToDictionary(p => keys[p.ProjectFile], p => p.RelativeProjectFile, StringComparer.Ordinal),
+            assembled.Nodes, assembled.Edges, assembled.EntryPoints, assembled.Dispatch, assembled.NullFlows, assembled.LimitNotes, metrics, warnings.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     /// <summary>Project name when unique, repository-relative csproj path otherwise, so identities never collide.</summary>
