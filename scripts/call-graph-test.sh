@@ -17,6 +17,12 @@ ENGINE="$(dirname "$PROJECT")/bin/Debug/net10.0/CodeAtlas.Engine.dll"
 engine() { dotnet "$ENGINE" "$@"; }
 fail() { echo "Call graph test failed: $1" >&2; exit 1; }
 
+# Cancellation tests must not depend on how fast the machine is: the workload is timed once to completion and the signal is sent at a
+# fraction of that time, so it always lands mid-run. A workload that finishes in under 1.5 s is too small to cancel and is reported as such.
+now() { python3 -c 'import time; print(time.time())'; }
+timed() { local started finished; started=$(now); "$@" > /dev/null; finished=$(now); python3 -c "print(round($finished - $started, 2))"; }
+fraction() { python3 -c "print(max(0.4, round($1 * $2, 2)))"; }
+
 cat > "$WORK/lib.cjs" <<'JS'
 const fs = require('node:fs');
 exports.load = p => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -386,19 +392,20 @@ NODE
 
 # ---------------------------------------------------------------- 10. cancellation during graph construction
 BIG="$WORK/big"; mkdir -p "$BIG"
-# 400 projects take ~10 s to build here; a signal at 5 s lands mid-build (loading or extraction).
-for i in $(seq 1 400); do mkdir -p "$BIG/P$i"; cp "$FIX/closed/Closed.csproj" "$BIG/P$i/P$i.csproj"; cp "$FIX/closed/Closed.cs" "$BIG/P$i/Closed.cs"; done
+for i in $(seq 1 800); do mkdir -p "$BIG/P$i"; cp "$FIX/closed/Closed.csproj" "$BIG/P$i/P$i.csproj"; cp "$FIX/closed/Closed.cs" "$BIG/P$i/Closed.cs"; done
+FULL=$(timed dotnet "$ENGINE" graph build "$BIG" --no-cache)
+python3 -c "import sys; sys.exit(0 if $FULL >= 1.5 else 1)" || fail "the 800-project workload builds in $FULL s: too small to cancel mid-run"
 dotnet "$ENGINE" graph build "$BIG" --no-cache > "$WORK/cancel.json" &
 PID=$!
-sleep 5
-kill -TERM "$PID"
+sleep "$(fraction "$FULL" 0.33)"
+kill -TERM "$PID" 2>/dev/null || fail "the build ended before the signal (full run $FULL s)"
 CODE=0; wait "$PID" || CODE=$?
-[[ "$CODE" == "130" ]] || fail "expected exit 130 after SIGTERM during graph construction, got $CODE (0 means the workload finished before the signal)"
+[[ "$CODE" == "130" ]] || fail "expected exit 130 after SIGTERM during graph construction, got $CODE (a full run takes $FULL s)"
 node -e '
 const g = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 if (g.status !== "cancelled" || g.completeness.closed || !g.warnings.some(w => w.includes("cancelled"))) { console.error("Call graph test failed: cancelled build must be marked cancelled and not complete"); process.exit(1); }
-if (g.metrics.projects >= 400) { console.error("Call graph test failed: expected a partial graph"); process.exit(1); }
-console.log("Cancellation verified: SIGTERM mid-build produced a partial graph (" + g.metrics.projects + "/400 projects) marked cancelled and not complete, exit 130.");' "$WORK/cancel.json"
+if (g.metrics.projects >= 800) { console.error("Call graph test failed: expected a partial graph"); process.exit(1); }
+console.log("Cancellation verified: SIGTERM mid-build produced a partial graph (" + g.metrics.projects + "/800 projects) marked cancelled and not complete, exit 130.");' "$WORK/cancel.json"
 
 # Cancellation during extraction (not just loading): four heavy projects built one at a time.
 HEAVY="$WORK/heavy"
@@ -413,10 +420,12 @@ lines.append("}")
 open(sys.argv[1], "w").write("\n".join(lines))
 PY
 done
+FULL2=$(timed dotnet "$ENGINE" graph build "$HEAVY" --no-cache --max-parallelism 1)
+python3 -c "import sys; sys.exit(0 if $FULL2 >= 1.5 else 1)" || fail "the heavy workload builds in $FULL2 s: too small to cancel mid-run"
 dotnet "$ENGINE" graph build "$HEAVY" --no-cache --max-parallelism 1 > "$WORK/cancel2.json" &
 PID=$!
-sleep 7
-kill -TERM "$PID"
+sleep "$(fraction "$FULL2" 0.5)"
+kill -TERM "$PID" 2>/dev/null || fail "the heavy build ended before the signal (full run $FULL2 s)"
 CODE=0; wait "$PID" || CODE=$?
 [[ "$CODE" == "130" ]] || fail "expected exit 130 after SIGTERM during extraction, got $CODE (0 means the machine finished all four projects first)"
 node -e '

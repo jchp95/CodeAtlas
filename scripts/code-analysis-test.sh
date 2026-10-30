@@ -162,19 +162,23 @@ else
 fi
 
 # 11. Cancellation: SIGTERM mid-run stops the analysis and yields a partial report that says so.
-# 150 projects take ~10 s here, so a signal at 3 s must land mid-run; finishing first means the workload is too small.
+# Cancellation must not depend on machine speed: time the workload once to completion, then signal at a third of that time.
+now() { python3 -c 'import time; print(time.time())'; }
+timed() { local started finished; started=$(now); "$@" > /dev/null; finished=$(now); python3 -c "print(round($finished - $started, 2))"; }
 BIG="$WORK/big"; mkdir -p "$BIG"
-for i in $(seq 1 150); do mkdir -p "$BIG/P$i"; cp "$FIXTURE/RiskyService.csproj" "$BIG/P$i/P$i.csproj"; cp "$FIXTURE/Defects.cs" "$BIG/P$i/Defects.cs"; done
+for i in $(seq 1 300); do mkdir -p "$BIG/P$i"; cp "$FIXTURE/RiskyService.csproj" "$BIG/P$i/P$i.csproj"; cp "$FIXTURE/Defects.cs" "$BIG/P$i/Defects.cs"; done
+FULL=$(timed dotnet "$ENGINE" analyze "$BIG" --no-cache)
+python3 -c "import sys; sys.exit(0 if $FULL >= 1.5 else 1)" || { echo "Cancellation test failed: the 300-project workload analyzes in $FULL s, too small to cancel mid-run." >&2; exit 1; }
 dotnet "$ENGINE" analyze "$BIG" --no-cache > "$WORK/cancel.json" &
 PID=$!
-sleep 3
-kill -TERM "$PID"
+sleep "$(python3 -c "print(max(0.4, round($FULL * 0.33, 2)))")"
+kill -TERM "$PID" 2>/dev/null || { echo "Cancellation test failed: the analysis ended before the signal (full run $FULL s)." >&2; exit 1; }
 CODE=0; wait "$PID" || CODE=$?
-[[ "$CODE" == "130" ]] || { echo "Cancellation test failed: expected exit 130 after SIGTERM, got $CODE (0 means the run finished before the signal)." >&2; exit 1; }
+[[ "$CODE" == "130" ]] || { echo "Cancellation test failed: expected exit 130 after SIGTERM, got $CODE (a full run takes $FULL s)." >&2; exit 1; }
 node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 if (!r.cancelled || !r.warnings.some(w => w.includes("cancelled"))) { console.error("Cancellation test failed: report not marked cancelled"); process.exit(1); }
-if (r.projects.length >= 150) { console.error("Cancellation test failed: expected a partial result, got " + r.projects.length + " projects"); process.exit(1); }
-console.log("Cancellation verified: SIGTERM mid-run produced a partial report (" + r.projects.length + "/150 projects) marked cancelled, exit 130.");' "$WORK/cancel.json"
+if (r.projects.length >= 300) { console.error("Cancellation test failed: expected a partial result, got " + r.projects.length + " projects"); process.exit(1); }
+console.log("Cancellation verified: SIGTERM mid-run produced a partial report (" + r.projects.length + "/300 projects) marked cancelled, exit 130.");' "$WORK/cancel.json"
 
 echo "Code analysis test passed."

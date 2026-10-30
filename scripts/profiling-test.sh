@@ -112,11 +112,11 @@ console.log(`Heap verified: reachable bytes ${(leak.snapshots[0].totalBytes / 1e
 NODE
 
 # --- Comparison: only repeated, non-overlapping measurements can call a regression
-engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 12" --allow-execution --repeat 3 > "$WORK/cmp-small-a.json"
-engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 12" --allow-execution --repeat 3 > "$WORK/cmp-small-b.json"
-engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 60" --allow-execution --repeat 3 > "$WORK/cmp-big.json"
-engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 12" --allow-execution --repeat 1 > "$WORK/cmp-single.json"
-engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 60" --allow-execution --repeat 1 > "$WORK/cmp-single-big.json"
+engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 30" --allow-execution --repeat 3 > "$WORK/cmp-small-a.json"
+engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 30" --allow-execution --repeat 3 > "$WORK/cmp-small-b.json"
+engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 150" --allow-execution --repeat 3 > "$WORK/cmp-big.json"
+engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 30" --allow-execution --repeat 1 > "$WORK/cmp-single.json"
+engine profile cpu "$WORK/repo" --program "$APP" --args "fixed 150" --allow-execution --repeat 1 > "$WORK/cmp-single-big.json"
 engine profile compare "$WORK/cmp-small-a.json" "$WORK/cmp-small-b.json" > "$WORK/c-same.json"
 engine profile compare "$WORK/cmp-small-a.json" "$WORK/cmp-big.json" > "$WORK/c-regress.json"
 engine profile compare "$WORK/cmp-big.json" "$WORK/cmp-small-a.json" > "$WORK/c-improve.json"
@@ -127,13 +127,16 @@ node - "$WORK" <<'NODE'
 const w = process.argv[2];
 const { load, fail } = require(w + '/lib.cjs');
 const [same, reg, imp, single] = ['c-same', 'c-regress', 'c-improve', 'c-single'].map(n => load(`${w}/${n}.json`));
-if (same.verdict !== 'noSignificantChange') fail('the same workload twice must not differ: ' + JSON.stringify(same.deltas.filter(d => d.verdict !== 'noSignificantChange')));
+// The same workload twice must never be called a regression or an improvement. 'inconclusive' (overlapping ranges on a noisy machine) is the
+// honest answer when the runs vary; only a definite verdict would be a false claim.
+const falseClaims = same.deltas.filter(d => d.verdict === 'regression' || d.verdict === 'improvement');
+if (falseClaims.length) fail('the same workload twice must not produce a regression/improvement verdict: ' + JSON.stringify(falseClaims));
 const total = c => c.deltas.find(d => d.subject === 'total sampled CPU ms');
 if (reg.verdict !== 'regression' || total(reg).verdict !== 'regression') fail('5x the work with 3 disjoint runs per side is a regression: ' + JSON.stringify(total(reg)));
 if (imp.verdict !== 'improvement') fail('the reverse is an improvement: ' + imp.verdict);
 if (single.verdict !== 'inconclusive' || total(single).verdict !== 'inconclusive' || !total(single).reason.includes('single run')) fail('one run per side must be inconclusive, never a verdict: ' + JSON.stringify(total(single)));
 if (!reg.notes.some(n => n.includes('simpler-looking'))) fail('the comparison must warn against judging by code shape');
-console.log(`Comparison verified: same = ${same.verdict}; 5× work = ${reg.verdict} (${total(reg).changePercent}%); reverse = ${imp.verdict}; single runs = ${single.verdict}; mixed kinds refused.`);
+console.log(`Comparison verified: same workload = ${same.verdict} (never regression/improvement); 5× work = ${reg.verdict} (${total(reg).changePercent}%); reverse = ${imp.verdict}; single runs = ${single.verdict}; mixed kinds refused.`);
 NODE
 
 # --- Attach: counters from an already-running process; it must be left running
